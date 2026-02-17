@@ -1,0 +1,42 @@
+name: Daily Radio Automation
+
+# いつ実行するか？
+on:
+  schedule:
+    # 毎日 日本時間 朝7:00 (UTC 22:00) に実行
+    - cron: "0 22 * * *"
+  # GitHubの画面からポチッと手動実行もできるようにする設定
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    # タイムゾーンを日本に設定
+    env:
+      TZ: "Asia/Tokyo"
+
+    steps:
+      # 1. コードをチェックアウト（ダウンロード）
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. Node.jsの環境を用意
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      # 3. 必要なライブラリをインストール
+      - name: Install dependencies
+        run: npm ci
+
+      # 4. スクリプト実行！
+      - name: Run Daily Radio
+        run: node index.js
+        env:
+          # GitHubに登録した鍵を環境変数として渡す
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          # OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }} # 音声使うときに有効化
