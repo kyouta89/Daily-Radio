@@ -9,7 +9,8 @@ delete process.env.HTTPS_PROXY;
 const { fetchNews } = require("./src/rss");
 const { generateScript } = require("./src/gemini");
 const { saveToNotion } = require("./src/notion");
-const { generateAudio } = require("./src/audio"); // ★コメントアウト解除
+const { generateAudio } = require("./src/audio");
+const path = require("path");
 
 const RSS_URLS = [
   "https://zenn.dev/feed",
@@ -21,13 +22,13 @@ const RSS_URLS = [
   "https://gigazine.net/news/rss_2.0/",
 ];
 
-// ★Googleドライブの保存先フォルダを指定
-const SAVE_DIR =
+const LOCAL_SAVE_DIR = path.join(__dirname, "output");
+const GOOGLE_DRIVE_DIR =
   "/Users/takahashikyota/Library/CloudStorage/GoogleDrive-kyouta898@gmail.com/マイドライブ/Daily-Radio";
 
 async function main() {
   try {
-    console.log("📻 Daily Radio (完全版) 起動...");
+    console.log("📻 Daily Radio 起動...");
 
     const newsItems = await fetchNews(RSS_URLS);
     const generatedData = await generateScript(
@@ -35,11 +36,12 @@ async function main() {
       process.env.GEMINI_API_KEY,
     );
 
-    // ★音声生成のコメントアウトを解除し、実行する
+    // 引数にローカルパスとドライブパスの両方を渡す
     await generateAudio(
       generatedData.script,
       process.env.OPENAI_API_KEY,
-      SAVE_DIR,
+      LOCAL_SAVE_DIR,
+      GOOGLE_DRIVE_DIR,
     );
 
     await saveToNotion(
@@ -48,9 +50,7 @@ async function main() {
       process.env.NOTION_DATABASE_ID,
     );
 
-    console.log(
-      "🎉 全工程が完了しました！GoogleドライブとNotionを確認してください。",
-    );
+    console.log("🎉 全工程が完了しました！");
   } catch (error) {
     console.error("💀 メイン処理でエラーが発生しました:", error);
   }
