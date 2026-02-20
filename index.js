@@ -6,50 +6,51 @@ delete process.env.https_proxy;
 delete process.env.HTTP_PROXY;
 delete process.env.HTTPS_PROXY;
 
-// モジュールの読み込み
 const { fetchNews } = require("./src/rss");
 const { generateScript } = require("./src/gemini");
 const { saveToNotion } = require("./src/notion");
-const { generateAudio } = require("./src/audio"); // ★追加！
+const { generateAudio } = require("./src/audio"); // ★コメントアウト解除
 
-// 設定
-const RSS_URL = "https://zenn.dev/feed";
-// ★保存先フォルダ（ファイル名は自動生成されるのでフォルダパスだけでOK）
+const RSS_URLS = [
+  "https://zenn.dev/feed",
+  "https://qiita.com/popular-items/feed",
+  "https://b.hatena.ne.jp/hotentry/it.rss",
+  "https://news.ycombinator.com/rss",
+  "https://www.echojs.com/rss",
+  "https://www.publickey1.jp/atom.xml",
+  "https://gigazine.net/news/rss_2.0/",
+];
+
+// ★Googleドライブの保存先フォルダを指定
 const SAVE_DIR =
   "/Users/takahashikyota/Library/CloudStorage/GoogleDrive-kyouta898@gmail.com/マイドライブ/Daily-Radio";
 
 async function main() {
   try {
-    console.log("📻 Daily Radio (リファクタリング完了版) 起動...");
+    console.log("📻 Daily Radio (完全版) 起動...");
 
-    // 1. ニュース収集
-    const newsItems = await fetchNews(RSS_URL);
-
-    // 2. 原稿生成 (Gemini)
+    const newsItems = await fetchNews(RSS_URLS);
     const generatedData = await generateScript(
       newsItems,
       process.env.GEMINI_API_KEY,
     );
 
-    // 3. 音声生成 (OpenAI)
-    // ★今はまだ課金しないのでコメントアウト中！使う時はここを外すだけ。
-    /*
+    // ★音声生成のコメントアウトを解除し、実行する
     await generateAudio(
-      generatedData.script, 
-      process.env.OPENAI_API_KEY, 
-      SAVE_DIR
+      generatedData.script,
+      process.env.OPENAI_API_KEY,
+      SAVE_DIR,
     );
-    */
-    console.log("3. 音声生成... (スキップ中)");
 
-    // 4. Notion保存
     await saveToNotion(
       generatedData,
       process.env.NOTION_API_KEY,
       process.env.NOTION_DATABASE_ID,
     );
 
-    console.log("🎉 全工程が完了しました！");
+    console.log(
+      "🎉 全工程が完了しました！GoogleドライブとNotionを確認してください。",
+    );
   } catch (error) {
     console.error("💀 メイン処理でエラーが発生しました:", error);
   }

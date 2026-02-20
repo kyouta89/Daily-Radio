@@ -12,6 +12,16 @@ async function saveToNotion(data, apiKey, dbId) {
     // タグの整形
     const tagOptions = data.tags.split(",").map((t) => ({ name: t.trim() }));
 
+    // ★追加: URLが有効か判定する関数
+    function isValidUrl(string) {
+      try {
+        new URL(string);
+        return string.startsWith("http://") || string.startsWith("https://");
+      } catch (_) {
+        return false;
+      }
+    }
+
     // リンクブロックの作成
     const linkLines = data.linksRaw
       .split("\n")
@@ -20,6 +30,18 @@ async function saveToNotion(data, apiKey, dbId) {
       .map((line) => {
         const [title, url] = line.split("|").map((s) => s.trim());
         if (!title || !url) return null;
+
+        // ★修正: URLが無効な場合はリンクを外してテキストのみにする
+        if (!isValidUrl(url)) {
+          return {
+            object: "block",
+            type: "bulleted_list_item",
+            bulleted_list_item: {
+              rich_text: [{ text: { content: title } }],
+            },
+          };
+        }
+
         return {
           object: "block",
           type: "bulleted_list_item",
@@ -29,6 +51,45 @@ async function saveToNotion(data, apiKey, dbId) {
         };
       })
       .filter((b) => b !== null);
+
+    // 改行（段落）ごとに分割し、Notionの制限（2000文字）に収まるようにまとめる関数
+    function splitTextByParagraph(text, maxLength = 1800) {
+      const paragraphs = text.split("\n");
+      const chunks = [];
+      let currentChunk = "";
+
+      for (const p of paragraphs) {
+        if (p.length > maxLength) {
+          if (currentChunk) {
+            chunks.push(currentChunk);
+            currentChunk = "";
+          }
+          let remaining = p;
+          while (remaining.length > 0) {
+            chunks.push(remaining.substring(0, maxLength));
+            remaining = remaining.substring(maxLength);
+          }
+        } else if (currentChunk.length + p.length + 1 > maxLength) {
+          chunks.push(currentChunk);
+          currentChunk = p + "\n";
+        } else {
+          currentChunk += p + "\n";
+        }
+      }
+      if (currentChunk) {
+        chunks.push(currentChunk);
+      }
+      return chunks.map((c) => c.trim()).filter((c) => c.length > 0);
+    }
+
+    const scriptChunks = splitTextByParagraph(data.script);
+    const scriptBlocks = scriptChunks.map((chunk) => ({
+      object: "block",
+      type: "paragraph",
+      paragraph: {
+        rich_text: [{ text: { content: chunk } }],
+      },
+    }));
 
     // Notionページ作成
     await notion.pages.create({
@@ -71,13 +132,7 @@ async function saveToNotion(data, apiKey, dbId) {
           type: "heading_2",
           heading_2: { rich_text: [{ text: { content: "📻 ラジオ原稿" } }] },
         },
-        {
-          object: "block",
-          type: "paragraph",
-          paragraph: {
-            rich_text: [{ text: { content: data.script.slice(0, 1800) } }],
-          },
-        },
+        ...scriptBlocks,
       ],
     });
     console.log("✅ Notion保存完了！");

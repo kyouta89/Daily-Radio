@@ -3,8 +3,8 @@ name: Daily Radio Automation
 # いつ実行するか？
 on:
   schedule:
-    # 毎日 日本時間 朝7:00 (UTC 22:00) に実行
-    - cron: "0 22 * * *"
+    # 毎日 日本時間 朝6:00 (UTC 21:00) に実行
+    - cron: "0 21 * * *"
   # GitHubの画面からポチッと手動実行もできるようにする設定
   workflow_dispatch:
 
