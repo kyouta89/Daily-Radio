@@ -66,7 +66,10 @@ async function generateAudio(script, apiKey, localDir, driveDir) {
     }
 
     const finalBuffer = Buffer.concat(audioBuffers);
-    const dateStr = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const jstDate = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const dateStr = jstDate.toISOString().split("T")[0];
+
     const fileName = `radio_${dateStr}.mp3`;
 
     // 1. ローカルフォルダに保存 (GitHub Actionsの一時領域)
