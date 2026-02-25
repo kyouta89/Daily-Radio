@@ -1,23 +1,24 @@
 const { OpenAI } = require("openai");
 const fs = require("fs");
 const path = require("path");
-const { google } = require("googleapis"); // ★追加: Google APIツール
+const { google } = require("googleapis");
 
-// ★追加: Googleドライブへアップロードする専用関数
+// ★修正：OAuth認証を使ってGoogleドライブへアップロードする関数
 async function uploadToDrive(filePath, fileName) {
   try {
-    console.log("☁️ Googleドライブへアップロードを開始します...");
+    console.log("☁️ Googleドライブへアップロードを開始します (OAuth認証)...");
 
     // GitHub Secrets (または .env) から鍵情報を読み込む
-    const credentials = JSON.parse(process.env.GDRIVE_CREDENTIALS);
+    const clientId = process.env.GDRIVE_CLIENT_ID;
+    const clientSecret = process.env.GDRIVE_CLIENT_SECRET;
+    const refreshToken = process.env.GDRIVE_REFRESH_TOKEN;
     const folderId = process.env.GDRIVE_FOLDER_ID;
 
-    // Google APIの認証設定
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ["https://www.googleapis.com/auth/drive.file"],
-    });
-    const drive = google.drive({ version: "v3", auth });
+    // OAuth2クライアントの準備
+    const oauth2Client = new google.auth.OAuth2(clientId, clientSecret);
+    oauth2Client.setCredentials({ refresh_token: refreshToken });
+
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
 
     // アップロードするファイルの設定
     const fileMetadata = {
@@ -26,7 +27,7 @@ async function uploadToDrive(filePath, fileName) {
     };
     const media = {
       mimeType: "audio/mpeg",
-      body: fs.createReadStream(filePath), // 一時保存したファイルを読み込む
+      body: fs.createReadStream(filePath),
     };
 
     // アップロード実行
@@ -44,19 +45,19 @@ async function uploadToDrive(filePath, fileName) {
   }
 }
 
-// メインの音声生成関数
-async function generateAudio(script, apiKey, localDir, _ignoredDriveDir) {
+async function generateAudio(script, apiKey, localDir, driveDir) {
   try {
     console.log("3. 音声生成(OpenAI TTS)を開始します...");
     const openai = new OpenAI({ apiKey: apiKey });
+
     const chunks = splitTextByParagraph(script, 4000);
     const audioBuffers = [];
 
     for (let i = 0; i < chunks.length; i++) {
       console.log(`   - 音声生成中 (${i + 1}/${chunks.length} パート)...`);
       const mp3 = await openai.audio.speech.create({
-        model: "tts-1-hd",
-        voice: "nova",
+        model: "tts-1-hd", // 高音質モデル
+        voice: "nova", // 例: "shimmer"、"deep"、"bright"など
         speed: 1.1,
         input: chunks[i],
       });
@@ -68,18 +69,18 @@ async function generateAudio(script, apiKey, localDir, _ignoredDriveDir) {
     const dateStr = new Date().toISOString().split("T")[0];
     const fileName = `radio_${dateStr}.mp3`;
 
-    // 1. GitHub Actionsの一時サーバー（またはMacローカル）に保存
+    // 1. ローカルフォルダに保存 (GitHub Actionsの一時領域)
     if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
     const localPath = path.join(localDir, fileName);
     fs.writeFileSync(localPath, finalBuffer);
-    console.log(`✅ ローカル(一時領域)に保存完了: ${localPath}`);
+    console.log(`✅ ローカルに保存完了: ${localPath}`);
 
-    // 2. Googleドライブ API を使ってアップロード！
-    if (process.env.GDRIVE_CREDENTIALS && process.env.GDRIVE_FOLDER_ID) {
+    // 2. Googleドライブ API を使ってアップロード！ (★ここを修正しました)
+    if (process.env.GDRIVE_CLIENT_ID && process.env.GDRIVE_REFRESH_TOKEN) {
       await uploadToDrive(localPath, fileName);
     } else {
       console.log(
-        "⚠️ Googleドライブの認証情報がないため、アップロードをスキップします。",
+        "⚠️ Googleドライブの認証情報がないため、APIでのアップロードをスキップします。",
       );
     }
   } catch (error) {
