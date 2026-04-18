@@ -1,22 +1,20 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { fetchWeather } = require("./weather");
 
-async function generateScript(items, apiKey) {
+async function generateScript(axesWithItems, apiKey) {
   try {
     console.log("2. AIが構成・リンク抽出・執筆中...");
     const genAI = new GoogleGenerativeAI(apiKey);
 
-    // ★追加: 2つのモデルを用途に合わせて準備
-    const modelFlash = genAI.getGenerativeModel({ model: "gemini-2.5-flash" }); // 処理が速くて安いモデル
-    const modelPro = genAI.getGenerativeModel({ model: "gemini-2.5-pro" }); // 表現力が豊かで賢いモデル
+    const modelFlash = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const modelPro = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
 
     const todayStr = new Date().toLocaleDateString("ja-JP", {
       month: "long",
       day: "numeric",
     });
 
-    // --- フェーズ0: オープニングAI (天気と今日は何の日) ---
-    // ※ここは短いのでFlashで十分です
+    // --- フェーズ0: オープニング (天気と今日は何の日) ---
     console.log("  => [Phase 0] オープニング原稿を生成中 (Flash)...");
     const weatherData = await fetchWeather();
     let weatherInfo = "天気情報は現在取得できません。";
@@ -25,8 +23,9 @@ async function generateScript(items, apiKey) {
     }
 
     const openingPrompt = `
-あなたはテック系ラジオ番組のAIパーソナリティ「アリス」です。
-明るくエネルギッシュで、活気のある親しみやすい女性のトーンで、番組のオープニング挨拶を作成してください。
+あなたはテック系ラジオ番組のパーソナリティです。
+明るくエネルギッシュで、活気のある親しみやすいトーンで、番組のオープニング挨拶を作成してください。
+名前の名乗りは不要です。
 
 以下の2つの要素を必ず含めてください：
 1. 【天気と気遣い】: 以下の神奈川県川崎市の天気情報を伝え、それに合わせて「今日は洗濯物を外に干せるか」などのリスナーへのアドバイスを明るく伝えてください。
@@ -39,64 +38,58 @@ async function generateScript(items, apiKey) {
     const openingResult = await modelFlash.generateContent(openingPrompt);
     let fullScript = `【オープニング】\n${openingResult.response.text().replace(/```/g, "").trim()}\n\n`;
 
-    // --- フェーズ1: 編集長AI (ニュースの選別) ---
-    // ※ただ選ぶだけなのでFlashで十分です
-    console.log("  => [Phase 1] 編集長AIがニュースを5件厳選中 (Flash)...");
-    const editorPrompt = `
+    // --- フェーズ1: 各軸から1件ずつ厳選 (並列実行) ---
+    console.log("  => [Phase 1] 各軸から最良の1件を厳選中 (Flash)...");
+
+    const selectionPromises = axesWithItems.map(async (axis) => {
+      const editorPrompt = `
 あなたはプロのテックメディアの編集長です。
-以下のニュースリストから、エンジニアのキャリアや技術向上に役立つ、または単純に面白いニュースを「5つ」厳選してください。
+以下のニュースリストから、エンジニアや経営者にとって最も価値があり、読む価値のあるニュースを「1つ」だけ厳選してください。
 必ず以下のJSONフォーマットのみを出力してください。Markdown記号（\`\`\`jsonなど）は絶対に使わないでください。
 
-[
-  {
-    "title": "記事のタイトル",
-    "url": "記事のURL",
-    "reason": "この記事を選んだ理由（100文字程度）"
-  }
-]
-※配列の中に5つのオブジェクトを入れてください。
+{
+  "title": "記事のタイトル",
+  "url": "記事のURL",
+  "reason": "この記事を選んだ理由（100文字程度）"
+}
 
+【軸】${axis.name}
 【ニュースリスト】
-${items}
+${axis.items}
 `;
-    const editorResult = await modelFlash.generateContent(editorPrompt);
-    let editorText = editorResult.response.text();
-    editorText = editorText
-      .replace(/```json/g, "")
-      .replace(/```/g, "")
-      .trim();
+      const result = await modelFlash.generateContent(editorPrompt);
+      let text = result.response.text().replace(/```json/g, "").replace(/```/g, "").trim();
+      try {
+        const selected = JSON.parse(text);
+        console.log(`     ✅ [${axis.name}] 選定: ${selected.title}`);
+        return { axis: axis.name, ...selected };
+      } catch (e) {
+        console.error(`JSONパースエラー [${axis.name}]:`, text);
+        throw new Error(`[${axis.name}] の選定AIの出力が不正なフォーマットでした。`);
+      }
+    });
 
-    let selectedNews = [];
-    try {
-      selectedNews = JSON.parse(editorText);
-    } catch (e) {
-      console.error("JSONパースエラー。AIの出力:", editorText);
-      throw new Error("編集長AIの出力が不正なフォーマットでした。");
-    }
+    const selectedNews = await Promise.all(selectionPromises);
 
-    // --- フェーズ2: ライターAI (個別原稿の執筆) ---
-    // ★ここが腕の見せ所なので、Proモデルを使います！
-    console.log(
-      `  => [Phase 2] ライターAIが ${selectedNews.length} 本の原稿を執筆中 (Pro)...`,
-    );
+    // --- フェーズ2: コーナーごとに原稿執筆 ---
+    console.log(`  => [Phase 2] ${selectedNews.length}コーナーの原稿を執筆中 (Pro)...`);
     let linksRaw = "";
 
     for (let i = 0; i < selectedNews.length; i++) {
       const news = selectedNews[i];
-      console.log(
-        `     - 執筆中 (${i + 1}/${selectedNews.length}): ${news.title}`,
-      );
+      console.log(`     - 執筆中 (${i + 1}/${selectedNews.length}): [${news.axis}] ${news.title}`);
 
       linksRaw += `${news.title}|${news.url}\n`;
 
       const writerPrompt = `
-あなたはテック系ラジオ番組のAIパーソナリティ「アリス」です。
-明るくエネルギッシュで、活気のある親しみやすい女性のトーン（元気な語り口や女性らしい表現）で解説してください。
+あなたはテック系ラジオ番組のパーソナリティです。
+明るくエネルギッシュで、活気のある親しみやすいトーンで解説してください。
+名前の名乗りは不要です。
 
 【重要ルール】
-・これは番組の途中のニュース解説コーナーです。
-・「こんにちは」「番組へようこそ」「アリスです」といったオープニングの挨拶や自己紹介は**絶対にしないでください**。
-・「続いてのニュースは〜」や「さて、この記事ですが〜」といった自然な導入から、すぐに記事の解説を始めてください。
+・これは「${news.axis}」コーナーのニュース解説です。
+・「こんにちは」「番組へようこそ」といったオープニングの挨拶や自己紹介は絶対にしないでください。
+・「続いては${news.axis}コーナーです。」のような自然なコーナー導入から始めてください。
 ・時間は5〜6分程度（文字数にして1000〜1500文字程度）で、深掘りして面白く伝えてください。
 ・Markdown記号（**や#など）は絶対に使わず、プレーンテキストの話し言葉で出力してください。
 
@@ -105,22 +98,19 @@ ${items}
 URL: ${news.url}
 編集長からの選定理由: ${news.reason}
 `;
-      // ★ここで modelPro を呼び出します
       const writerResult = await modelPro.generateContent(writerPrompt);
-      let scriptPart = writerResult.response.text();
-      scriptPart = scriptPart
+      let scriptPart = writerResult.response.text()
         .replace(/```/g, "")
         .replace(/\*\*/g, "")
         .replace(/#/g, "");
 
-      fullScript += `【ニュース${i + 1}】\n${scriptPart}\n\n`;
+      fullScript += `【${news.axis}】\n${scriptPart}\n\n`;
     }
 
     fullScript +=
-      "【エンディング】\n今日のお相手はAIパーソナリティのアリスでした！詳細なリンクはNotionにまとめておきますので、気になった記事はぜひチェックしてみてくださいね。それでは、今日も一日元気に頑張りましょう！\n";
+      "【エンディング】\n以上、今日も5つのコーナーをお届けしました！気になった記事はNotionにリンクをまとめていますので、ぜひチェックしてみてください。それでは、今日も一日元気に頑張りましょう！\n";
 
-    // --- フェーズ3: ディレクターAI (タグと要約の作成) ---
-    // ※要約だけなのでFlashで十分です
+    // --- フェーズ3: タグと要約の作成 ---
     console.log("  => [Phase 3] ディレクターAIがタグと要約を生成中 (Flash)...");
     const directorPrompt = `
 以下のラジオ原稿の一部を読み、エンジニア向けのタグと要約を生成してください。
@@ -138,22 +128,15 @@ URL: ${news.url}
 ${fullScript.substring(0, 2000)}
 `;
     const directorResult = await modelFlash.generateContent(directorPrompt);
-    let directorText = directorResult.response.text();
-    directorText = directorText.replace(/```/g, "");
+    let directorText = directorResult.response.text().replace(/```/g, "");
 
-    const tagsMatch = directorText.match(
-      /---TAGS_START---([\s\S]*?)---TAGS_END---/,
-    );
-    const takeawayMatch = directorText.match(
-      /---TAKEAWAY_START---([\s\S]*?)---TAKEAWAY_END---/,
-    );
+    const tagsMatch = directorText.match(/---TAGS_START---([\s\S]*?)---TAGS_END---/);
+    const takeawayMatch = directorText.match(/---TAKEAWAY_START---([\s\S]*?)---TAKEAWAY_END---/);
 
     return {
       script: fullScript,
       tags: tagsMatch ? tagsMatch[1].trim() : "Tech, News",
-      takeaway: takeawayMatch
-        ? takeawayMatch[1].trim()
-        : "本日は5つのニュースを深掘りしました。",
+      takeaway: takeawayMatch ? takeawayMatch[1].trim() : "本日は5つのコーナーをお届けしました。",
       linksRaw: linksRaw.trim(),
     };
   } catch (error) {
