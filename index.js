@@ -10,6 +10,8 @@ const { fetchNews } = require("./src/rss");
 const { generateScript } = require("./src/gemini");
 const { saveToNotion } = require("./src/notion");
 const { generateAudio } = require("./src/audio");
+const { downloadExistingRSS, uploadRSSToR2 } = require("./src/r2");
+const { generateRSS } = require("./src/rss_generator");
 const path = require("path");
 
 const RSS_AXES = [
@@ -36,7 +38,7 @@ const RSS_AXES = [
     name: "エンタープライズIT・業界",
     urls: [
       "https://www.publickey1.jp/atom.xml",
-      "https://rss.itmedia.co.jp/rss/2.0/itmediaenterprise.xml",
+      "https://rss.itmedia.co.jp/rss/2.0/enterprise.xml",
       "https://cloud.watch.impress.co.jp/data/rss/1.0/clw/feed.rdf",
     ],
   },
@@ -45,7 +47,6 @@ const RSS_AXES = [
     urls: [
       "https://toyokeizai.net/list/feed/rss",
       "https://diamond.jp/list/feed/rss/dol",
-      "https://logmi.jp/feed",
       "https://www.businessinsider.jp/feed/index.xml",
     ],
   },
@@ -54,14 +55,12 @@ const RSS_AXES = [
     urls: [
       "https://coralcap.co/feed/",
       "https://prtimes.jp/index.rdf",
-      "https://techable.jp/feed",
+      "https://thebridge.jp/feed",
     ],
   },
 ];
 
 const LOCAL_SAVE_DIR = path.join(__dirname, "output");
-const GOOGLE_DRIVE_DIR =
-  "/Users/takahashikyota/Library/CloudStorage/GoogleDrive-kyouta898@gmail.com/マイドライブ/Daily-Radio";
 
 async function main() {
   try {
@@ -73,12 +72,15 @@ async function main() {
       process.env.GEMINI_API_KEY,
     );
 
-    await generateAudio(
+    const { fileName, audioUrl, sizeBytes } = await generateAudio(
       generatedData.script,
       process.env.OPENAI_API_KEY,
       LOCAL_SAVE_DIR,
-      GOOGLE_DRIVE_DIR,
     );
+
+    const existingXML = await downloadExistingRSS();
+    const rssContent = generateRSS(fileName, audioUrl, sizeBytes, 0, existingXML);
+    await uploadRSSToR2(rssContent);
 
     await saveToNotion(
       generatedData,
