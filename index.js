@@ -36,7 +36,7 @@ const RSS_AXES = [
     name: "エンタープライズIT・業界",
     urls: [
       "https://www.publickey1.jp/atom.xml",
-      "https://rss.itmedia.co.jp/rss/2.0/itmediaenterprise.xml",
+      "https://rss.itmedia.co.jp/rss/2.0/enterprise.xml",
       "https://cloud.watch.impress.co.jp/data/rss/1.0/clw/feed.rdf",
     ],
   },
@@ -45,7 +45,6 @@ const RSS_AXES = [
     urls: [
       "https://toyokeizai.net/list/feed/rss",
       "https://diamond.jp/list/feed/rss/dol",
-      "https://logmi.jp/feed",
       "https://www.businessinsider.jp/feed/index.xml",
     ],
   },
@@ -54,7 +53,7 @@ const RSS_AXES = [
     urls: [
       "https://coralcap.co/feed/",
       "https://prtimes.jp/index.rdf",
-      "https://techable.jp/feed",
+      "https://thebridge.jp/feed",
     ],
   },
 ];
