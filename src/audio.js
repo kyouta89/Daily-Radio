@@ -2,6 +2,7 @@ const { OpenAI } = require("openai");
 const fs = require("fs");
 const path = require("path");
 const { google } = require("googleapis");
+const { mixBGM } = require("./bgm");
 
 // ★修正：OAuth認証を使ってGoogleドライブへアップロードする関数
 async function uploadToDrive(filePath, fileName) {
@@ -78,7 +79,10 @@ async function generateAudio(script, apiKey, localDir, driveDir) {
     fs.writeFileSync(localPath, finalBuffer);
     console.log(`✅ ローカルに保存完了: ${localPath}`);
 
-    // 2. Googleドライブ API を使ってアップロード！ (★ここを修正しました)
+    // 2. BGMを合成
+    await mixBGM(localPath);
+
+    // 3. Googleドライブ API を使ってアップロード！
     if (process.env.GDRIVE_CLIENT_ID && process.env.GDRIVE_REFRESH_TOKEN) {
       await uploadToDrive(localPath, fileName);
     } else {
