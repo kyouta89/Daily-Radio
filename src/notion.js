@@ -1,13 +1,45 @@
 const { Client } = require("@notionhq/client");
 
+function getTodayDateStr() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function getTodayPageTitle() {
+  return `【Radio】${getTodayDateStr()}`;
+}
+
+async function getPrimaryDataSourceId(notion, dbId) {
+  const db = await notion.databases.retrieve({ database_id: dbId });
+  const sources = db.data_sources || [];
+  if (sources.length === 0) {
+    throw new Error(`Database ${dbId} has no data_sources`);
+  }
+  return sources[0].id;
+}
+
+async function findTodayPage(apiKey, dbId) {
+  try {
+    const notion = new Client({ auth: apiKey });
+    const dsId = await getPrimaryDataSourceId(notion, dbId);
+    const resp = await notion.dataSources.query({
+      data_source_id: dsId,
+      filter: { property: "Name", title: { equals: getTodayPageTitle() } },
+      page_size: 1,
+    });
+    return resp.results.length > 0 ? resp.results[0] : null;
+  } catch (err) {
+    console.warn(`⚠️ 既存ページチェック失敗（続行）: ${err.message}`);
+    return null;
+  }
+}
+
 async function saveToNotion(data, apiKey, dbId) {
   try {
     console.log("4. Notionに保存中...");
     const notion = new Client({ auth: apiKey });
 
-    // 日付文字列の作成
-    const now = new Date();
-    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const dateStr = getTodayDateStr();
 
     // タグの整形
     const tagOptions = data.tags.split(",").map((t) => ({ name: t.trim() }));
@@ -142,4 +174,46 @@ async function saveToNotion(data, apiKey, dbId) {
   }
 }
 
-module.exports = { saveToNotion };
+async function fetchRecentArticleURLs(apiKey, dbId, days = 14) {
+  try {
+    const notion = new Client({ auth: apiKey });
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    const sinceISO = since.toISOString().split("T")[0];
+
+    const dsId = await getPrimaryDataSourceId(notion, dbId);
+    const queryResp = await notion.dataSources.query({
+      data_source_id: dsId,
+      filter: {
+        property: "Date",
+        date: { on_or_after: sinceISO },
+      },
+      page_size: 50,
+    });
+
+    const urls = new Set();
+    for (const page of queryResp.results) {
+      const blocks = await notion.blocks.children.list({
+        block_id: page.id,
+        page_size: 100,
+      });
+      for (const block of blocks.results) {
+        if (block.type !== "bulleted_list_item") continue;
+        const richTexts = block.bulleted_list_item.rich_text || [];
+        for (const rt of richTexts) {
+          const link = rt.text?.link?.url || rt.href;
+          if (link && /^https?:\/\//.test(link)) {
+            urls.add(link);
+          }
+        }
+      }
+    }
+    console.log(`  ✅ 過去${days}日分の採用済みURL: ${urls.size}件`);
+    return urls;
+  } catch (err) {
+    console.warn(`⚠️ 過去採用URL取得失敗（除外なしで続行）: ${err.message}`);
+    return new Set();
+  }
+}
+
+module.exports = { saveToNotion, fetchRecentArticleURLs, findTodayPage };
