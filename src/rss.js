@@ -27,7 +27,11 @@ async function fetchNews(axes, limitPerSource = 5) {
       axes.map(async (axis) => {
         const items = await fetchNewsForAxis(axis, limitPerSource);
         console.log(`  ✅ [${axis.name}] ${items.length}件取得`);
-        return { name: axis.name, items: items.join("\n") };
+        return {
+          name: axis.name,
+          selectionHint: axis.selectionHint || "",
+          items: items.join("\n"),
+        };
       })
     );
 

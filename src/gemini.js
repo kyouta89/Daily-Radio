@@ -1,7 +1,8 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const { fetchWeather } = require("./weather");
+const { fetchOnThisDay } = require("./onThisDay");
 
-async function generateScript(axesWithItems, apiKey) {
+async function generateScript(axesWithItems, apiKey, excludedUrls = new Set()) {
   try {
     console.log("2. AIが構成・リンク抽出・執筆中...");
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -16,24 +17,40 @@ async function generateScript(axesWithItems, apiKey) {
 
     // --- フェーズ0: オープニング (天気と今日は何の日) ---
     console.log("  => [Phase 0] オープニング原稿を生成中 (Flash)...");
-    const weatherData = await fetchWeather();
+    const [weatherData, onThisDayRaw] = await Promise.all([
+      fetchWeather(),
+      fetchOnThisDay(),
+    ]);
     let weatherInfo = "天気情報は現在取得できません。";
     if (weatherData) {
       weatherInfo = `今日の天気は${weatherData.condition}、最高気温は${weatherData.maxTemp}度、最低気温は${weatherData.minTemp}度、降水確率は${weatherData.rainProb}%です。`;
     }
 
+    const onThisDayBlock = onThisDayRaw
+      ? `
+【今日（${todayStr}）の歴史的出来事 — Wikipedia「${todayStr}」ページの「できごと」セクション抜粋】
+${onThisDayRaw.slice(0, 6000)}
+
+上記の資料からITやコンピュータ・通信・テクノロジーに関連する出来事を1つだけ選んで、年号と共に小ネタとして紹介してください。資料に該当する出来事が見当たらない場合は、無理に選ばず、季節や気象に関連した親しみやすい話題に置き換えてください。資料に書かれていない出来事を勝手に作らないでください。`
+      : `
+資料が取得できなかったため、「今日は何の日」のセクションは省略し、季節や気象に関連した親しみやすい話題に置き換えてください。`;
+
     const openingPrompt = `
 あなたはテック系ラジオ番組のパーソナリティです。
 明るくエネルギッシュで、活気のある親しみやすいトーンで、番組のオープニング挨拶を作成してください。
-名前の名乗りは不要です。
 
-以下の2つの要素を必ず含めてください：
-1. 【天気と気遣い】: 以下の神奈川県川崎市の天気情報を伝え、それに合わせて「今日は洗濯物を外に干せるか」などのリスナーへのアドバイスを明るく伝えてください。
+【厳守ルール】
+・名前の名乗りや自己紹介は一切しないでください。「私〇〇です」「パーソナリティの〇〇です」のような形式は禁止。
+・「（オープニングSEと共に）」のような演出のト書き・括弧書きは絶対に出力しないでください。
+・「〇〇」「××」のような未確定のプレースホルダー文字は絶対に含めないでください。
+・Markdown記号（#、**、-など）は使わず、そのまま読み上げ可能な自然な話し言葉のプレーンテキストのみ出力してください。
+・文字数は300〜400文字程度。
+
+【含めるべき2要素】
+1. 天気と気遣い: 神奈川県川崎市の天気情報を伝え、「洗濯物を外に干せるか」など生活に密着したアドバイスを明るく添える。
    [気象情報]: ${weatherInfo}
-2. 【今日は何の日？】: 今日（${todayStr}）に関連する、ITやテクノロジー界隈の歴史的な出来事（例：〇〇の発売日、〇〇の設立日など）を1つ紹介し、小ネタとして話してください。
-
-・文字数は300〜400文字程度にまとめてください。
-・Markdown記号は使わず、自然な話し言葉のプレーンテキストで出力してください。
+2. 今日は何の日:
+${onThisDayBlock}
 `;
     const openingResult = await modelFlash.generateContent(openingPrompt);
     let fullScript = `【オープニング】\n${openingResult.response.text().replace(/```/g, "").trim()}\n\n`;
@@ -41,7 +58,15 @@ async function generateScript(axesWithItems, apiKey) {
     // --- フェーズ1: 各軸から1件ずつ厳選 (並列実行) ---
     console.log("  => [Phase 1] 各軸から最良の1件を厳選中 (Flash)...");
 
+    const exclusionBlock =
+      excludedUrls.size > 0
+        ? `\n【除外対象URL（過去14日に既出のため避ける）】\n${[...excludedUrls].join("\n")}\n上記URLの記事は選ばないでください。ただし候補リストの全件が除外対象の場合に限り、その中から最良の1つを選んでください。\n`
+        : "";
+
     const selectionPromises = axesWithItems.map(async (axis) => {
+      const hintBlock = axis.selectionHint
+        ? `\n【この軸の選定方針】\n${axis.selectionHint}\n`
+        : "";
       const editorPrompt = `
 あなたはプロのテックメディアの編集長です。
 以下のニュースリストから、エンジニアや経営者にとって最も価値があり、読む価値のあるニュースを「1つ」だけ厳選してください。
@@ -53,7 +78,7 @@ async function generateScript(axesWithItems, apiKey) {
   "reason": "この記事を選んだ理由（100文字程度）"
 }
 
-【軸】${axis.name}
+【軸】${axis.name}${hintBlock}${exclusionBlock}
 【ニュースリスト】
 ${axis.items}
 `;
