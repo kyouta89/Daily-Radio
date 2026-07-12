@@ -7,7 +7,7 @@ delete process.env.HTTP_PROXY;
 delete process.env.HTTPS_PROXY;
 
 const { fetchNews } = require("./src/rss");
-const { generateScript } = require("./src/gemini");
+const { generateScript } = require("./src/script");
 const {
   saveToNotion,
   fetchRecentArticleURLs,
@@ -49,7 +49,7 @@ async function main() {
     ]);
     const generatedData = await generateScript(
       axesWithItems,
-      process.env.GEMINI_API_KEY,
+      process.env.ANTHROPIC_API_KEY,
       excludedUrls,
     );
 
