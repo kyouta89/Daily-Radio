@@ -105,4 +105,4 @@ async function generateAudio(script, apiKey, localDir) {
   }
 }
 
-module.exports = { generateAudio };
+module.exports = { generateAudio, parseDialogue };
