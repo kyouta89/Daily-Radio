@@ -25,11 +25,13 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "18"
+          node-version: "20"
+          cache: "npm"
 
-      # 3. ffmpegをインストール
+      # 3. ffmpegをインストール（apt-get update を先に実行しないと
+      #    ランナーのキャッシュにある古い .deb URL が 404 で失敗する）
       - name: Install ffmpeg
-        run: sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       # 4. 必要なライブラリをインストール
       - name: Install dependencies
