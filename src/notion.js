@@ -123,6 +123,27 @@ async function saveToNotion(data, apiKey, dbId) {
       },
     }));
 
+    // 今日のバリエーション（ムード・声）の記録。あれば冒頭に1ブロック足す。
+    const moodBlocks = data.moodLabel
+      ? [
+          {
+            object: "block",
+            type: "callout",
+            callout: {
+              rich_text: [
+                {
+                  text: {
+                    content: `🎭 本日のムード: ${data.moodLabel}（声: ${data.voiceA} / ${data.voiceB}）`,
+                  },
+                },
+              ],
+              color: "purple_background",
+              icon: { emoji: "🎭" },
+            },
+          },
+        ]
+      : [];
+
     // Notionページ作成
     await notion.pages.create({
       parent: { database_id: dbId },
@@ -132,6 +153,7 @@ async function saveToNotion(data, apiKey, dbId) {
         Tags: { multi_select: tagOptions },
       },
       children: [
+        ...moodBlocks,
         {
           object: "block",
           type: "callout",

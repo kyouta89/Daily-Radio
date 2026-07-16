@@ -18,6 +18,7 @@ const { downloadExistingRSS, uploadRSSToR2 } = require("./src/r2");
 const { generateRSS } = require("./src/rss_generator");
 const path = require("path");
 const { RSS_AXES } = require("./src/axes");
+const { getDailyVariant } = require("./src/variant");
 
 
 const LOCAL_SAVE_DIR = path.join(__dirname, "output");
@@ -39,6 +40,16 @@ async function main() {
       }
     }
 
+    // 今日のバリエーション（日付シードでムード・声を決定。同じ日なら固定）
+    const now = new Date();
+    const jstDateStr = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0];
+    const variant = getDailyVariant(jstDateStr);
+    console.log(
+      `🎨 本日のムード: ${variant.mood.label}（声: ミナ=${variant.voiceA} / リク=${variant.voiceB}）`,
+    );
+
     const [axesWithItems, excludedUrls] = await Promise.all([
       fetchNews(RSS_AXES),
       fetchRecentArticleURLs(
@@ -51,12 +62,18 @@ async function main() {
       axesWithItems,
       process.env.ANTHROPIC_API_KEY,
       excludedUrls,
+      variant,
     );
+    generatedData.moodLabel = variant.mood.label;
+    generatedData.voiceA = variant.voiceA;
+    generatedData.voiceB = variant.voiceB;
 
     const { fileName, audioUrl, sizeBytes } = await generateAudio(
       generatedData.script,
-      process.env.OPENAI_API_KEY,
+      process.env.GEMINI_API_KEY,
       LOCAL_SAVE_DIR,
+      variant,
+      jstDateStr,
     );
 
     const existingXML = await downloadExistingRSS();
