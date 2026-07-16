@@ -37,10 +37,15 @@ function renderItemList(items) {
     .join("\n");
 }
 
-async function generateScript(axesWithItems, apiKey, excludedUrls = new Set()) {
+async function generateScript(axesWithItems, apiKey, excludedUrls = new Set(), variant = null) {
   try {
     console.log("2. Claudeが構成・リンク抽出・執筆中...");
     const client = new Anthropic({ apiKey, maxRetries: 3 });
+
+    // 今日のムード（variant.mood.tone）を執筆トーンとして全プロンプトに注入する。
+    const moodBlock = variant?.mood?.tone
+      ? `\n【今日の番組トーン】\n${variant.mood.tone}\nこのトーンで会話全体の空気・言葉選び・テンションを統一する（ただし書式ルールは厳守）。`
+      : "";
 
     const todayStr = new Date().toLocaleDateString("ja-JP", {
       month: "long",
@@ -63,7 +68,7 @@ async function generateScript(axesWithItems, apiKey, excludedUrls = new Set()) {
       : `\n資料が取得できなかったため「今日は何の日」は省略し、季節や気象の親しみやすい話題に置き換える。`;
 
     const openingPrompt = `${HOST_A.name}と${HOST_B.name}が進行するテック系ラジオ番組のオープニングを、2人の掛け合いで作成してください。
-${DIALOGUE_RULES}
+${DIALOGUE_RULES}${moodBlock}
 
 【含める2要素】
 1. 天気と気遣い: 神奈川県川崎市の天気を伝え、「洗濯物を干せるか」など生活に密着したアドバイスを添える。
@@ -129,7 +134,7 @@ ${renderItemList(axis.items)}`;
         ? `\n記事の要約(参考): ${news.snippet}`
         : "";
       const writerPrompt = `「${news.axis}」コーナーのニュース解説を、${HOST_A.name}と${HOST_B.name}の対話で書いてください。
-${DIALOGUE_RULES}
+${DIALOGUE_RULES}${moodBlock}
 
 【重要】
 ・「続いては${news.axis}のコーナーです」のような自然な導入から ${HOST_A.name} が始める。
