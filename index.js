@@ -109,6 +109,9 @@ async function main() {
     console.log("🎉 全工程が完了しました！");
   } catch (error) {
     console.error("💀 メイン処理でエラーが発生しました:", error);
+    // 非ゼロ終了でジョブを失敗(赤)にする。これをしないと失敗しても成功扱いになり
+    // 通知が飛ばず“静かな失敗”になる。
+    process.exitCode = 1;
   }
 }
 

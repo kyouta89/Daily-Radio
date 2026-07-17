@@ -52,7 +52,8 @@ function matchesKeyword(item, keyword) {
 async function generateScript(axesWithItems, apiKey, excludedUrls = new Set(), variant = null) {
   try {
     console.log("2. Claudeが構成・リンク抽出・執筆中...");
-    const client = new Anthropic({ apiKey, maxRetries: 3 });
+    // timeout: 1リクエストが無限に待たないよう明示（maxRetries と併用）
+    const client = new Anthropic({ apiKey, maxRetries: 3, timeout: 180000 });
 
     // 今日のムード（variant.mood.tone）を執筆トーンとして全プロンプトに注入する。
     const moodBlock = variant?.mood?.tone

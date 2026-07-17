@@ -8,6 +8,7 @@ async function fetchOnThisDay() {
 
     const res = await fetch(url, {
       headers: { "User-Agent": "DailyRadio/1.0 (github.com/kyouta89/Daily-Radio)" },
+      signal: AbortSignal.timeout(20000), // 無応答時にパイプラインを止めない
     });
     if (!res.ok) throw new Error(`Wikipedia HTTP ${res.status}`);
     const json = await res.json();

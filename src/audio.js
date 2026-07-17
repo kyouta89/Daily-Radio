@@ -89,6 +89,8 @@ async function geminiSynthChunk(apiKey, text, voiceName, styleInstruction, state
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
           },
         }),
+        // 詰まったら中断→リトライ。全滅なら throw して run 全体を失敗させる（無限待ち防止）
+        signal: AbortSignal.timeout(120000),
       });
     } catch (e) {
       if (attempt === MAX_ATTEMPTS) throw e;
