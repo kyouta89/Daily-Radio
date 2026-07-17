@@ -187,7 +187,7 @@ async function generateAudio(script, apiKey, localDir, variant, dateStr) {
     }
     console.log(`✅ ローカル保存完了: ${localPath}`);
 
-    await mixBGM(localPath);
+    await mixBGM(localPath, dateStr);
 
     const { url: audioUrl, sizeBytes } = await uploadToR2(localPath, fileName);
     return { fileName, audioUrl, sizeBytes, localPath };
