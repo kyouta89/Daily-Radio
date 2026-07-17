@@ -7,8 +7,13 @@ on:
     # UTCの日〜木(0-4)を指定すると JST の月〜金になる。土日は起動しない。
     # （祝日は index.js 側でスキップ判定する。cronでは表現できないため）
     - cron: "0 21 * * 0-4"
-  # GitHubの画面からポチッと手動実行もできるようにする設定（土日祝でも手動なら起動可）
+  # GitHubの画面からポチッと手動実行もできるようにする設定
   workflow_dispatch:
+    inputs:
+      force_run:
+        description: "土日祝でも・本日分が既にあっても強制生成する（検証用）"
+        type: boolean
+        default: false
 
 jobs:
   run-script:
@@ -47,6 +52,10 @@ jobs:
       - name: Run Daily Radio
         run: node index.js
         env:
+          # 手動実行でチェックを入れたときだけ "true" が入る。
+          # cron実行では空になるため、平日ガード・重複ガードは通常どおり効く。
+          FORCE_RUN: ${{ inputs.force_run }}
+
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
