@@ -14,6 +14,10 @@ jobs:
   run-script:
     runs-on: ubuntu-latest
 
+    # 想定外のハングでも60分で強制終了（6時間放置を防ぐ。超過すると失敗=通知が飛ぶ）。
+    # 正常実行は数分〜十数分なので余裕。
+    timeout-minutes: 60
+
     # タイムゾーンを日本に設定
     env:
       TZ: "Asia/Tokyo"

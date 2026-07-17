@@ -7,7 +7,8 @@ async function fetchWeather() {
     // Open-Meteo APIから本日の天気、最高/最低気温、降水確率を取得
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weathercode,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FTokyo`;
 
-    const response = await fetch(url);
+    // タイムアウトを付与（無応答時にパイプラインを止めない）
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
     const data = await response.json();
 
     const today = data.daily;
