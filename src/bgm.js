@@ -2,23 +2,62 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const BGM_PATH = path.join(__dirname, "../assets/bgm.mp3");
+// BGMは「プール(assets/bgm/*.mp3)＋従来の単曲(assets/bgm.mp3)」から日替わりで1曲選ぶ。
+// プールが空でも従来曲にフォールバックするので、音源が無くても壊れない。
+const BGM_DIR = path.join(__dirname, "../assets/bgm");
+const LEGACY_BGM = path.join(__dirname, "../assets/bgm.mp3");
 const BGM_VOLUME = 0.12;
 
-async function mixBGM(speechPath) {
-  if (!fs.existsSync(BGM_PATH)) {
-    console.log("⚠️ BGMファイルが見つからないためスキップします:", BGM_PATH);
+function hashStr(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+// 利用可能なBGMトラック一覧（従来の単曲＋プール）。
+function listTracks() {
+  const tracks = [];
+  if (fs.existsSync(LEGACY_BGM)) tracks.push(LEGACY_BGM);
+  if (fs.existsSync(BGM_DIR)) {
+    for (const f of fs.readdirSync(BGM_DIR).sort()) {
+      if (/\.mp3$/i.test(f)) tracks.push(path.join(BGM_DIR, f));
+    }
+  }
+  return tracks;
+}
+
+// seed(=その日の日付文字列)で決定的に1曲選ぶ。seed無しならランダム。
+function pickTrack(seed) {
+  const tracks = listTracks();
+  if (tracks.length === 0) return null;
+  const idx = seed
+    ? hashStr(String(seed)) % tracks.length
+    : Math.floor(Math.random() * tracks.length);
+  return tracks[idx];
+}
+
+async function mixBGM(speechPath, seed) {
+  const bgmPath = pickTrack(seed);
+  if (!bgmPath) {
+    console.log("⚠️ BGMファイルが見つからないためスキップします");
     return speechPath;
   }
 
   const outputPath = speechPath.replace(".mp3", "_with_bgm.mp3");
 
-  console.log("🎵 BGMを合成中...");
+  console.log(`🎵 BGMを合成中... (${path.basename(bgmPath)})`);
   try {
+    // プール曲は取り込み時に loudness 正規化済みなので、ここは実績ある単純ミックス
+    // （volume=0.12 + amix duration=first）。無限ループ入力に重いフィルタを載せない。
+    // -map "[mix]" で音声のみ出力（曲にアルバムアート画像が埋まっていても、
+    // -stream_loop がそれを無限ループして暴走するのを防ぐ）。
     execSync(
-      `ffmpeg -y -i "${speechPath}" -stream_loop -1 -i "${BGM_PATH}" \
-      -filter_complex "[1:a]volume=${BGM_VOLUME}[bgm];[0:a][bgm]amix=inputs=2:duration=first" \
-      -c:a libmp3lame -q:a 2 "${outputPath}"`,
+      `ffmpeg -y -i "${speechPath}" -stream_loop -1 -i "${bgmPath}" \
+      -filter_complex "[1:a]volume=${BGM_VOLUME}[bgm];[0:a][bgm]amix=inputs=2:duration=first[mix]" \
+      -map "[mix]" -c:a libmp3lame -q:a 2 "${outputPath}"`,
       { stdio: "pipe" }
     );
 
