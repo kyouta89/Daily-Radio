@@ -33,8 +33,20 @@ async function callClaude(client, model, system, userText, maxTokens) {
 
 function renderItemList(items) {
   return items
-    .map((it) => `- 【${it.site}】${it.title} (${it.link})`)
+    .map((it) => {
+      const age = it.ageDays == null ? "日付不明" : `${it.ageDays}日前`;
+      return `- 【${it.site}｜${age}】${it.title} (${it.link})`;
+    })
     .join("\n");
+}
+
+// 記事のタイトル/スニペットにキーワードが含まれるか（大小無視）
+function matchesKeyword(item, keyword) {
+  const k = keyword.toLowerCase();
+  return (
+    (item.title || "").toLowerCase().includes(k) ||
+    (item.snippet || "").toLowerCase().includes(k)
+  );
 }
 
 async function generateScript(axesWithItems, apiKey, excludedUrls = new Set(), variant = null) {
@@ -90,15 +102,41 @@ ${DIALOGUE_RULES}${moodBlock}
       const hintBlock = axis.selectionHint
         ? `\n【この軸の選定方針】\n${axis.selectionHint}\n`
         : "";
+
+      // 優先キーワード(例: ServiceNow)の鮮度ゲート。
+      // 「maxAgeDays日以内 かつ 未使用」の該当記事があれば、その軸は該当記事に限定して最優先。
+      // 無ければ該当記事を候補から外し、一般記事から選ぶ（古い該当記事の混入を防ぐ）。
+      let candidateItems = axis.items;
+      let priorityNote = "";
+      if (axis.priority) {
+        const { keyword, maxAgeDays } = axis.priority;
+        const freshUnused = axis.items.filter(
+          (it) =>
+            matchesKeyword(it, keyword) &&
+            it.ageDays != null &&
+            it.ageDays <= maxAgeDays &&
+            !excludedUrls.has(it.link)
+        );
+        if (freshUnused.length > 0) {
+          candidateItems = freshUnused;
+          priorityNote = `\n【最優先ルール】${keyword}の新鮮な記事（${maxAgeDays}日以内）があるため、候補は${keyword}関連に限定しています。この中から最良の1件を選んでください。\n`;
+          console.log(`     🎯 [${axis.name}] ${keyword}優先発動（新鮮な候補${freshUnused.length}件）`);
+        } else {
+          candidateItems = axis.items.filter((it) => !matchesKeyword(it, keyword));
+          if (candidateItems.length === 0) candidateItems = axis.items; // 保険
+        }
+      }
+
       const editorPrompt = `あなたはプロのテックメディアの編集長です。
 以下のニュースリストから、エンジニアや経営者にとって最も価値のあるニュースを「1つ」だけ厳選してください。
+なるべく新しい記事（【】内に「◯日前」を表示）を優先してください。
 出力は次のJSONのみ。Markdownのコードフェンス(\`\`\`)は使わないでください。
 
 {"title": "記事のタイトル", "url": "記事のURL", "reason": "選んだ理由(100文字程度)"}
 
-【軸】${axis.name}${hintBlock}${exclusionBlock}
+【軸】${axis.name}${hintBlock}${priorityNote}${exclusionBlock}
 【ニュースリスト】
-${renderItemList(axis.items)}`;
+${renderItemList(candidateItems)}`;
 
       const text = (
         await callClaude(client, AUX_MODEL, "あなたはプロのテックメディアの編集長です。JSONのみを返します。", editorPrompt, 500)
