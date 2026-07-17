@@ -10,10 +10,14 @@ const RSS_AXES = [
   },
   {
     name: "エンタープライズAI / SaaSプラットフォーム",
+    // ServiceNow優先は selectionHint(LLM任せ)ではなくコードで判定する（script.js）。
+    // priority.keyword を含む記事が maxAgeDays 日以内かつ未使用なら、その軸は
+    // 該当記事に限定して最優先採用。無ければ ServiceNow を候補から外し一般記事から選ぶ。
+    priority: { keyword: "ServiceNow", maxAgeDays: 7 },
     selectionHint:
-      "候補から1記事選択。ただし直近7日以内にServiceNow（製品名・会社名・関連キーワード）が記事タイトルまたは冒頭に明示的に含まれる新着があれば最優先で選ぶ。なければ広くエンタープライズAI/SaaSプラットフォームの動向（AWS、Microsoft、Salesforce、Oracle、Google Cloud、生成AIプロダクトなど）から、エンジニアや経営者にとって価値の高い記事を選ぶ。",
+      "エンタープライズAI/SaaSプラットフォームの動向（AWS、Microsoft、Salesforce、Oracle、Google Cloud、生成AIプロダクトなど）から、エンジニアや経営者にとって価値が高く、なるべく新しい記事を選ぶ。",
     urls: [
-      "https://www.servicenow.com/community/s/cgfwn76974/rss/Category?category.id=blogs&interaction.style=blog",
+      // ServiceNowニュース源（コミュニティ告知フィードはニュース性が低いため除外）
       "https://nowben.com/servicenow-news/feed/",
       "https://ainow.ai/feed/",
       "https://diginomica.com/feed",
