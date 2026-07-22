@@ -115,4 +115,9 @@ async function main() {
   }
 }
 
-main();
+main().finally(() => {
+  // TTS/AWS SDK 等の keep-alive ソケットでイベントループが空かず、処理完了後も
+  // プロセスが数十分ぶら下がる問題への対処。パイプラインは逐次 await なので、
+  // ここに到達した時点で全工程は完了/中断済み。終了コードを保って明示的に落とす。
+  process.exit(process.exitCode || 0);
+});
