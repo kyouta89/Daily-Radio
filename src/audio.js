@@ -109,23 +109,13 @@ function splitLong(text, max = MAX_TTS_CHARS) {
   return parts;
 }
 
-// Gemini-TTS で1チャンクを合成。返りは 24kHz/16bit/mono の生PCM。
-// TTSモデルが短い掛け声を「返答すべき会話」と誤解して 400 を返すことがあるため、
-// 読み上げ機として振る舞わせるプロンプトで囲み、失敗時は指示を強めてリトライする。
-async function geminiSynthChunk(apiKey, text, voiceName, styleInstruction, state) {
+// Gemini-TTS にリクエストを1回投げてPCMを得る共通処理。返りは 24kHz/16bit/mono の生PCM。
+// レート制御・リトライ・429の日次/分切り分け・PCM抽出をここに集約する。
+// bodyGen(attempt) は試行ごとの {contents, generationConfig} を返す（リトライ時に指示を強められるよう関数）。
+async function sendTTSRequest(apiKey, bodyGen, state) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TTS_MODEL}:generateContent?key=${apiKey}`;
-  const clean = text.replace(/[「」]/g, "").trim();
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const strictness =
-      attempt === 1
-        ? ""
-        : "【厳守】これは音声合成です。会話ではありません。返事・応答・補足を絶対に生成せず、";
-    const prompt =
-      `次の「」内のセリフを、${styleInstruction}という声色で、一字一句そのまま読み上げてください。` +
-      `${strictness}あなたは音声読み上げ機です。返答・相槌・補足・ナレーションは一切加えず、括弧内のテキストだけを音声化すること。\n` +
-      `「${clean}」`;
-
     // 10 RPM を超えないよう、前回のリクエスト開始から一定間隔を空ける
     await waitForSlot();
 
@@ -134,13 +124,7 @@ async function geminiSynthChunk(apiKey, text, voiceName, styleInstruction, state
       res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseModalities: ["AUDIO"],
-            speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
-          },
-        }),
+        body: JSON.stringify(bodyGen(attempt)),
         // 詰まったら中断→リトライ。全滅なら throw して run 全体を失敗させる（無限待ち防止）
         signal: AbortSignal.timeout(120000),
       });
@@ -171,8 +155,7 @@ async function geminiSynthChunk(apiKey, text, voiceName, styleInstruction, state
         if (q?.retrySec != null && q.retrySec > HARD_QUOTA_RETRY_SEC) {
           throw new Error(
             `Gemini TTS 日次クォータ枯渇 (429): ${q.metric} の上限 ${q.limit} に到達。` +
-              `復帰まで約${fmtDuration(q.retrySec)}。1エピソードは約94リクエスト必要なため、` +
-              `同じ日の作り直しはできません。\n応答全文: ${bodyText}`
+              `復帰まで約${fmtDuration(q.retrySec)}。日次上限に達したため、同じ日の作り直しはできません。\n応答全文: ${bodyText}`
           );
         }
         if (attempt === MAX_ATTEMPTS) {
@@ -196,6 +179,85 @@ async function geminiSynthChunk(apiKey, text, voiceName, styleInstruction, state
     }
     await sleep(1200 * attempt);
   }
+}
+
+// 単一話者で1チャンクを合成（フォールバック経路: GEMINI_TTS_SINGLE=true のとき使用）。
+// TTSモデルが短い掛け声を「返答すべき会話」と誤解して 400 を返すことがあるため、
+// 読み上げ機として振る舞わせるプロンプトで囲み、失敗時は指示を強めてリトライする。
+async function geminiSynthChunk(apiKey, text, voiceName, styleInstruction, state) {
+  const clean = text.replace(/[「」]/g, "").trim();
+  return sendTTSRequest(
+    apiKey,
+    (attempt) => {
+      const strictness =
+        attempt === 1
+          ? ""
+          : "【厳守】これは音声合成です。会話ではありません。返事・応答・補足を絶対に生成せず、";
+      const prompt =
+        `次の「」内のセリフを、${styleInstruction}という声色で、一字一句そのまま読み上げてください。` +
+        `${strictness}あなたは音声読み上げ機です。返答・相槌・補足・ナレーションは一切加えず、括弧内のテキストだけを音声化すること。\n` +
+        `「${clean}」`;
+      return {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName } } },
+        },
+      };
+    },
+    state
+  );
+}
+
+// マルチスピーカーで1セクション（話者ラベル付きの会話）をまとめて合成する（既定経路）。
+// 1リクエストで2話者分を喋り分けるため、リクエスト数は発話数ではなくセクション数になる
+// （1エピソード ~130発話 → ~7セクション。日次100リクエスト制限に収めるための要）。
+async function geminiSynthSection(apiKey, sectionText, speakerVoiceConfigs, styleInstruction, state) {
+  // 話者ラベルの区切りを半角コロンに正規化（APIが speaker 設定とラベルを確実に対応づけられるように）
+  const labelRe = new RegExp(`^\\s*(${HOST_A.name}|${HOST_B.name})\\s*[:：]\\s*`, "gm");
+  const normalized = sectionText.replace(labelRe, "$1: ").replace(/[「」]/g, "").trim();
+
+  return sendTTSRequest(
+    apiKey,
+    () => {
+      const prompt =
+        `次の${HOST_A.name}と${HOST_B.name}による会話を、${styleInstruction}という雰囲気で、` +
+        `台本のとおり自然な掛け合いで読み上げてください。返答・相槌・補足・ナレーションは加えず、` +
+        `各話者のセリフだけを音声化すること。\n\n${normalized}`;
+      return {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          responseModalities: ["AUDIO"],
+          speechConfig: { multiSpeakerVoiceConfig: { speakerVoiceConfigs } },
+        },
+      };
+    },
+    state
+  );
+}
+
+// 台本を、話者ラベル付きの会話ブロックにまとめる。マルチスピーカーは1ブロック=1リクエスト。
+// 台本は発話ごとに空行が入るため「空行=コーナー境界」では割れない（1発話ずつに割れてしまう）。
+// 代わりに発話を順に束ね、1ブロックの文字数が maxChars を超える手前で区切る（発話の途中では切らない）。
+// maxChars=2500 は音声にして約8分・出力〜9千トークン相当で、TTSの32kトークン上限に十分収まる。
+function splitIntoSections(script, maxChars = 2500) {
+  const segments = parseDialogue(script); // [{name, text}] ラベル無し継続行は直前へ連結済み
+  const sections = [];
+  let buf = [];
+  let len = 0;
+
+  for (const seg of segments) {
+    const line = `${seg.name}: ${seg.text.trim()}`;
+    if (len + line.length > maxChars && buf.length > 0) {
+      sections.push(buf.join("\n"));
+      buf = [];
+      len = 0;
+    }
+    buf.push(line);
+    len += line.length + 1; // +1 は連結する改行分
+  }
+  if (buf.length > 0) sections.push(buf.join("\n"));
+  return sections;
 }
 
 // 生PCM(s16le/mono) を ffmpeg で MP3 にエンコードする
@@ -229,48 +291,63 @@ async function generateAudio(script, apiKey, localDir, variant, dateStr) {
     );
     if (!apiKey) throw new Error("GEMINI_API_KEY が未設定です。");
 
-    const segments = parseDialogue(script);
-    if (segments.length === 0) {
-      throw new Error("台本から発話を抽出できませんでした（話者ラベルを確認）。");
-    }
-
-    // 話者名 → { voice, style } の対応（声はvariant、演技はホスト固有＋今日のムード）
-    const cfgByName = {
-      [HOST_A.name]: { voice: variant.voiceA, style: `${HOST_A.ttsInstructions} ${variant.mood.style}` },
-      [HOST_B.name]: { voice: variant.voiceB, style: `${HOST_B.ttsInstructions} ${variant.mood.style}` },
-    };
-
-    // 先に全リクエストを組み立て、必要数と所要時間を実行前に確定させる
-    // （日次クォータを使い切る規模かどうかを、1件も投げる前に知るため）
-    const jobs = [];
-    for (const seg of segments) {
-      const cfg = cfgByName[seg.name] || cfgByName[HOST_A.name];
-      for (const chunk of splitLong(seg.text.trim())) {
-        jobs.push({ name: seg.name, cfg, chunk });
-      }
-    }
-
-    const etaMin = Math.ceil((jobs.length * MIN_REQUEST_INTERVAL_MS) / 60000);
-    console.log(
-      `   ${jobs.length}リクエスト / 間隔${MIN_REQUEST_INTERVAL_MS / 1000}秒 → 推定 約${etaMin}分（10 RPM制限に合わせて意図的に間隔を空けています）`
-    );
-    if (jobs.length > 100) {
-      console.warn(
-        `   ⚠️ リクエスト数(${jobs.length})が日次上限100を超えています。途中で429により失敗する可能性が高いです。`
-      );
-    }
-
     const state = { sampleRate: 24000 };
     const pcmParts = [];
-    let turn = 0;
-    for (const job of jobs) {
-      turn += 1;
+
+    if (process.env.GEMINI_TTS_SINGLE === "true") {
+      // === フォールバック経路: 単一話者（1発話=1リクエスト） ===
+      // 発話数がそのままリクエスト数になるため、長い台本では日次100を超える。
+      const segments = parseDialogue(script);
+      if (segments.length === 0) {
+        throw new Error("台本から発話を抽出できませんでした（話者ラベルを確認）。");
+      }
+      const cfgByName = {
+        [HOST_A.name]: { voice: variant.voiceA, style: `${HOST_A.ttsInstructions} ${variant.mood.style}` },
+        [HOST_B.name]: { voice: variant.voiceB, style: `${HOST_B.ttsInstructions} ${variant.mood.style}` },
+      };
+      const jobs = [];
+      for (const seg of segments) {
+        const cfg = cfgByName[seg.name] || cfgByName[HOST_A.name];
+        for (const chunk of splitLong(seg.text.trim())) {
+          jobs.push({ name: seg.name, cfg, chunk });
+        }
+      }
+      const etaMin = Math.ceil((jobs.length * MIN_REQUEST_INTERVAL_MS) / 60000);
       console.log(
-        `   - 音声生成中 (${turn}/${jobs.length} / ${job.name} / ${job.cfg.voice})...`
+        `   [単一話者] ${jobs.length}リクエスト / 間隔${MIN_REQUEST_INTERVAL_MS / 1000}秒 → 推定 約${etaMin}分`
       );
-      pcmParts.push(
-        await geminiSynthChunk(apiKey, job.chunk, job.cfg.voice, job.cfg.style, state)
+      if (jobs.length > 100) {
+        console.warn(
+          `   ⚠️ リクエスト数(${jobs.length})が日次上限100を超えています。途中で429により失敗する可能性が高いです。`
+        );
+      }
+      let turn = 0;
+      for (const job of jobs) {
+        turn += 1;
+        console.log(`   - 音声生成中 (${turn}/${jobs.length} / ${job.name} / ${job.cfg.voice})...`);
+        pcmParts.push(await geminiSynthChunk(apiKey, job.chunk, job.cfg.voice, job.cfg.style, state));
+      }
+    } else {
+      // === 既定経路: マルチスピーカー（1セクション=1リクエスト） ===
+      // オープニング・各コーナー・エンディング単位でまとめて2声合成し、リクエスト数を発話数から
+      // セクション数(~7)へ激減させる。日次100リクエスト制限に収めるための本線。
+      const sections = splitIntoSections(script);
+      if (sections.length === 0) {
+        throw new Error("台本からセクションを抽出できませんでした（話者ラベルを確認）。");
+      }
+      const style = variant.mood.style;
+      const speakerVoiceConfigs = [
+        { speaker: HOST_A.name, voiceConfig: { prebuiltVoiceConfig: { voiceName: variant.voiceA } } },
+        { speaker: HOST_B.name, voiceConfig: { prebuiltVoiceConfig: { voiceName: variant.voiceB } } },
+      ];
+      const etaMin = Math.ceil((sections.length * MIN_REQUEST_INTERVAL_MS) / 60000);
+      console.log(
+        `   [マルチスピーカー] ${sections.length}セクション=${sections.length}リクエスト / 間隔${MIN_REQUEST_INTERVAL_MS / 1000}秒 → 推定 約${etaMin}分`
       );
+      for (let i = 0; i < sections.length; i++) {
+        console.log(`   - 音声生成中 (${i + 1}/${sections.length}セクション / ${sections[i].length}文字)...`);
+        pcmParts.push(await geminiSynthSection(apiKey, sections[i], speakerVoiceConfigs, style, state));
+      }
     }
 
     if (!fs.existsSync(localDir)) fs.mkdirSync(localDir, { recursive: true });
@@ -297,4 +374,4 @@ async function generateAudio(script, apiKey, localDir, variant, dateStr) {
   }
 }
 
-module.exports = { generateAudio, parseDialogue };
+module.exports = { generateAudio, parseDialogue, splitIntoSections };
