@@ -260,6 +260,18 @@ function splitIntoSections(script, maxChars = 2500) {
   return sections;
 }
 
+// マルチスピーカーの合成単位（＝1リクエスト）を決める。
+// scriptSections（script.js が返すコーナー配列 [オープニング, コーナー…, エンディング]）があれば
+// それを基準にし、声のドリフトが各ブロックの継ぎ目（＝コーナーの転換点）だけに出るようにする。
+// 上限(maxChars)を超えるブロックだけ splitIntoSections で再分割して安全側に倒す。
+// scriptSections が無ければ従来の文字数ベース分割にフォールバック（後方互換）。
+function buildSections(script, scriptSections) {
+  if (Array.isArray(scriptSections) && scriptSections.length > 0) {
+    return scriptSections.flatMap((block) => splitIntoSections(block));
+  }
+  return splitIntoSections(script);
+}
+
 // 生PCM(s16le/mono) を ffmpeg で MP3 にエンコードする
 function pcmToMp3(pcmPath, mp3Path, sampleRate) {
   return new Promise((resolve, reject) => {
@@ -284,7 +296,8 @@ function pcmToMp3(pcmPath, mp3Path, sampleRate) {
 }
 
 // variant = { voiceA, voiceB, mood } / dateStr = "YYYY-MM-DD"(JST)
-async function generateAudio(script, apiKey, localDir, variant, dateStr) {
+// scriptSections = コーナー単位の分割基準（script.js の返り値。無ければ文字数ベースにフォールバック）
+async function generateAudio(script, apiKey, localDir, variant, dateStr, scriptSections = null) {
   try {
     console.log(
       `3. 音声生成(Gemini-TTS / 2声対話)を開始します... [声: ${HOST_A.name}=${variant.voiceA} / ${HOST_B.name}=${variant.voiceB} / ムード: ${variant.mood.label}]`
@@ -331,7 +344,8 @@ async function generateAudio(script, apiKey, localDir, variant, dateStr) {
       // === 既定経路: マルチスピーカー（1セクション=1リクエスト） ===
       // オープニング・各コーナー・エンディング単位でまとめて2声合成し、リクエスト数を発話数から
       // セクション数(~7)へ激減させる。日次100リクエスト制限に収めるための本線。
-      const sections = splitIntoSections(script);
+      // scriptSections があればコーナー境界で切る（声のドリフトを継ぎ目=転換点に寄せる）。
+      const sections = buildSections(script, scriptSections);
       if (sections.length === 0) {
         throw new Error("台本からセクションを抽出できませんでした（話者ラベルを確認）。");
       }
@@ -374,4 +388,4 @@ async function generateAudio(script, apiKey, localDir, variant, dateStr) {
   }
 }
 
-module.exports = { generateAudio, parseDialogue, splitIntoSections };
+module.exports = { generateAudio, parseDialogue, splitIntoSections, buildSections };

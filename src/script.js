@@ -60,10 +60,12 @@ async function generateScript(axesWithItems, apiKey, excludedUrls = new Set(), v
       ? `\n【今日の番組トーン】\n${variant.mood.tone}\nこのトーンで会話全体の空気・言葉選び・テンションを統一する（ただし書式ルールは厳守）。`
       : "";
 
-    const todayStr = new Date().toLocaleDateString("ja-JP", {
-      month: "long",
-      day: "numeric",
-    });
+    // 今日の日付（JST）。variant.dateStr が権威（無ければ実行時のローカル日付）。
+    const jstDateStr = variant?.dateStr || new Date().toLocaleDateString("sv-SE");
+    const [ty, tm, td] = jstDateStr.split("-").map(Number);
+    const todayStr = `${tm}月${td}日`;
+    // 年を明示して「今年◯年」等の誤りを防ぐ（執筆モデルが年を推測して外す事故対策）。
+    const dateBlock = `\n【今日の日付（厳守）】今日は${ty}年${tm}月${td}日。番組内で年や「今年」「昨年」等に言及する際は必ずこの日付を基準にし、資料と異なる年を口にしない。`;
 
     // --- フェーズ0: オープニング (天気と今日は何の日) ---
     console.log("  => [Phase 0] オープニング対話を生成中 (Haiku)...");
@@ -81,7 +83,7 @@ async function generateScript(axesWithItems, apiKey, excludedUrls = new Set(), v
       : `\n資料が取得できなかったため「今日は何の日」は省略し、季節や気象の親しみやすい話題に置き換える。`;
 
     const openingPrompt = `${HOST_A.name}と${HOST_B.name}が進行するテック系ラジオ番組のオープニングを、2人の掛け合いで作成してください。
-${DIALOGUE_RULES}${moodBlock}
+${DIALOGUE_RULES}${moodBlock}${dateBlock}
 
 【含める2要素】
 1. 天気と気遣い: 神奈川県川崎市の天気を伝え、「洗濯物を干せるか」など生活に密着したアドバイスを添える。
@@ -90,7 +92,11 @@ ${DIALOGUE_RULES}${moodBlock}
 
 【分量】合計で概ね300〜450文字程度の自然な会話。番組の始まりらしく元気に。`;
 
-    let fullScript = (await callClaude(client, AUX_MODEL, "あなたはテック系ラジオ番組の放送作家です。", openingPrompt, 1500)) + "\n\n";
+    const openingText = await callClaude(client, AUX_MODEL, "あなたはテック系ラジオ番組の放送作家です。", openingPrompt, 1500);
+    // 音声のコーナー単位分割用に、自然なブロック（オープニング/各コーナー/エンディング）を配列でも保持する。
+    // 各ブロック=1リクエストにすることで、声のドリフトがコーナーの継ぎ目だけに出るようにする（本文の script 文字列は不変）。
+    const sections = [openingText];
+    let fullScript = openingText + "\n\n";
 
     // --- フェーズ1: 各軸から1件ずつ厳選 (並列) ---
     console.log("  => [Phase 1] 各軸から最良の1件を厳選中 (Haiku)...");
@@ -173,7 +179,7 @@ ${renderItemList(candidateItems)}`;
         ? `\n記事の要約(参考): ${news.snippet}`
         : "";
       const writerPrompt = `「${news.axis}」コーナーのニュース解説を、${HOST_A.name}と${HOST_B.name}の対話で書いてください。
-${DIALOGUE_RULES}${moodBlock}
+${DIALOGUE_RULES}${moodBlock}${dateBlock}
 
 【重要】
 ・「続いては${news.axis}のコーナーです」のような自然な導入から ${HOST_A.name} が始める。
@@ -193,11 +199,14 @@ URL: ${news.url}
         writerPrompt,
         4000
       );
+      sections.push(scriptPart);
       fullScript += `${scriptPart}\n\n`;
     }
 
     // --- エンディング (定型の掛け合い) ---
-    fullScript += `${HOST_A.name}: 以上、今日も5つのコーナーをお届けしました！気になった記事はNotionにリンクをまとめているので、ぜひチェックしてみてくださいね。\n${HOST_B.name}: 今日も一日、元気にいきましょう！それでは、また明日。\n`;
+    const endingText = `${HOST_A.name}: 以上、今日も5つのコーナーをお届けしました！気になった記事はNotionにリンクをまとめているので、ぜひチェックしてみてくださいね。\n${HOST_B.name}: 今日も一日、元気にいきましょう！それでは、また明日。\n`;
+    sections.push(endingText.trim());
+    fullScript += endingText;
 
     // --- フェーズ3: タグと要約 (Haiku) ---
     console.log("  => [Phase 3] タグと要約を生成中 (Haiku)...");
@@ -228,6 +237,7 @@ ${fullScript.substring(0, 2500)}`;
 
     return {
       script: fullScript,
+      sections, // コーナー単位の音声分割に使う自然なブロック配列（[オープニング, コーナー…, エンディング]）
       tags: tagsMatch ? tagsMatch[1].trim() : "Tech, News",
       takeaway: takeawayMatch ? takeawayMatch[1].trim() : "本日は5つのコーナーをお届けしました。",
       linksRaw: linksRaw.trim(),
