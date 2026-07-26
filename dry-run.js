@@ -8,13 +8,20 @@ delete process.env.HTTPS_PROXY;
 const fs = require("fs");
 const path = require("path");
 const { fetchNews } = require("./src/rss");
-const { generateScript } = require("./src/gemini");
+const { generateScript } = require("./src/script");
 const { fetchRecentArticleURLs } = require("./src/notion");
+const { getDailyVariant } = require("./src/variant");
 
 const { RSS_AXES } = require("./src/axes");
 
 async function main() {
   console.log("🧪 Dry Run: 原稿生成のみ（音声/Notion/R2はスキップ）");
+
+  // 本番と同じく日付シードのバリエーション（ムード・声・年月日）を通す
+  const jstDateStr = new Date(Date.now() + 9 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
+  const variant = getDailyVariant(jstDateStr);
 
   const [axesWithItems, excludedUrls] = await Promise.all([
     fetchNews(RSS_AXES),
@@ -27,8 +34,9 @@ async function main() {
 
   const generated = await generateScript(
     axesWithItems,
-    process.env.GEMINI_API_KEY,
+    process.env.ANTHROPIC_API_KEY,
     excludedUrls,
+    variant,
   );
 
   const outDir = path.join(__dirname, "output");

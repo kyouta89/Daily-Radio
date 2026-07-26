@@ -295,6 +295,26 @@ function pcmToMp3(pcmPath, mp3Path, sampleRate) {
   });
 }
 
+// 最終MP3の再生秒数を ffprobe で実測する。取得できなければ null（RSS側で0扱い）。
+// ffprobe不在(ローカル等)や失敗は握りつぶして従来どおり0にフォールバックする。
+function probeDurationSec(filePath) {
+  return new Promise((resolve) => {
+    const ff = spawn("ffprobe", [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "default=noprint_wrappers=1:nokey=1",
+      filePath,
+    ]);
+    let out = "";
+    ff.stdout.on("data", (d) => (out += d.toString()));
+    ff.on("error", () => resolve(null));
+    ff.on("close", (code) => {
+      const sec = parseFloat(out.trim());
+      resolve(code === 0 && Number.isFinite(sec) ? Math.round(sec) : null);
+    });
+  });
+}
+
 // variant = { voiceA, voiceB, mood } / dateStr = "YYYY-MM-DD"(JST)
 // scriptSections = コーナー単位の分割基準（script.js の返り値。無ければ文字数ベースにフォールバック）
 async function generateAudio(script, apiKey, localDir, variant, dateStr, scriptSections = null) {
@@ -380,8 +400,11 @@ async function generateAudio(script, apiKey, localDir, variant, dateStr, scriptS
 
     await mixBGM(localPath, dateStr);
 
+    // BGM合成後の最終ファイルで尺を実測（RSSの itunes:duration 用。従来は0固定だった）
+    const durationSec = await probeDurationSec(localPath);
+
     const { url: audioUrl, sizeBytes } = await uploadToR2(localPath, fileName);
-    return { fileName, audioUrl, sizeBytes, localPath };
+    return { fileName, audioUrl, sizeBytes, localPath, durationSec };
   } catch (error) {
     console.error("❌ 音声生成プロセスでエラーが発生しました:", error);
     throw error;

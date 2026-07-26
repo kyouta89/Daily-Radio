@@ -88,7 +88,7 @@ async function main() {
     generatedData.voiceA = variant.voiceA;
     generatedData.voiceB = variant.voiceB;
 
-    const { fileName, audioUrl, sizeBytes } = await generateAudio(
+    const { fileName, audioUrl, sizeBytes, durationSec } = await generateAudio(
       generatedData.script,
       process.env.GEMINI_API_KEY,
       LOCAL_SAVE_DIR,
@@ -98,7 +98,7 @@ async function main() {
     );
 
     const existingXML = await downloadExistingRSS();
-    const rssContent = generateRSS(fileName, audioUrl, sizeBytes, 0, existingXML);
+    const rssContent = generateRSS(fileName, audioUrl, sizeBytes, durationSec || 0, existingXML);
     await uploadRSSToR2(rssContent);
 
     await saveToNotion(
