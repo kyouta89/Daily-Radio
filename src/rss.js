@@ -64,6 +64,7 @@ async function fetchNews(axes, limitPerSource = 5) {
         return {
           name: axis.name,
           selectionHint: axis.selectionHint || "",
+          priority: axis.priority, // 鮮度ゲート(script.js Phase1)用。従来ここで落ちて死にコード化していた
           items, // ← 構造化した配列 [{site, title, link, snippet}]
         };
       })
