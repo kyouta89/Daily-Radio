@@ -94,6 +94,7 @@ async function main() {
       LOCAL_SAVE_DIR,
       variant,
       jstDateStr,
+      generatedData.sections,
     );
 
     const existingXML = await downloadExistingRSS();

@@ -7,7 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
-const { splitIntoSections } = require("../src/audio");
+const { splitIntoSections, buildSections } = require("../src/audio");
 
 const script = fs.readFileSync(
   path.join(__dirname, "fixtures", "sample-script.txt"),
@@ -50,5 +50,42 @@ assert.strictEqual(
   utterCount,
   `発話数が一致しない: 元${utterCount} vs 分割後${rejoinedUtters}`
 );
+
+// --- buildSections（コーナー単位分割）の回帰チェック ---
+// scriptSections（コーナー配列）を渡したら、各ブロックが独立したセクションになり、
+// 継ぎ目がブロック境界＝コーナーの転換点だけに来ること（＝声ドリフトを転換点に寄せる狙い）。
+const cornerBlocks = [
+  "ミナ: おはようございます。\nリク: 今日もよろしく。", // オープニング
+  "ミナ: 続いてはテックのコーナー。\nリク: お願いします。", // コーナー1
+  "ミナ: 続いてはビジネス。\nリク: なるほど。", // コーナー2
+  "ミナ: 以上でした。\nリク: また明日。", // エンディング
+];
+const built = buildSections("", cornerBlocks);
+assert.strictEqual(
+  built.length,
+  cornerBlocks.length,
+  `コーナー数ぶんのセクションになるはず: ${built.length} vs ${cornerBlocks.length}`
+);
+// 上限(2500字)を超える多発話コーナーは、発話境界で複数セクションに再分割される（安全側）こと
+const bigLines = [];
+for (let i = 0; i < 80; i++) {
+  bigLines.push(
+    (i % 2 ? "リク: " : "ミナ: ") +
+      "これはテスト用の少し長めの発話サンプルで、文字数を稼ぐためのダミーテキストです。"
+  );
+}
+const bigCorner = bigLines.join("\n"); // 約3500字（>2500）
+const withBig = buildSections("", [cornerBlocks[0], bigCorner]);
+assert.ok(
+  withBig.length >= 3,
+  `上限超過コーナーは複数セクションに再分割されるはず（${withBig.length}セクション）`
+);
+// scriptSections 無しは従来の文字数ベースにフォールバックすること
+assert.deepStrictEqual(
+  buildSections(script, null),
+  splitIntoSections(script),
+  "scriptSections無しは従来分割と一致するはず"
+);
+console.log(`buildSections: コーナー${cornerBlocks.length}ブロック → ${built.length}セクション / フォールバック一致OK`);
 
 console.log("✅ 全アサーション通過");
