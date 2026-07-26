@@ -29,13 +29,22 @@ function listTracks() {
   return tracks;
 }
 
-// seed(=その日の日付文字列)で決定的に1曲選ぶ。seed無しならランダム。
+// seed(=その日の日付文字列 "YYYY-MM-DD")で決定的に1曲選ぶ。seed無しならランダム。
+// 連日で同じ曲に当たらないよう、前日と同じインデックスなら1つずらす（体感の変化を増やす）。
 function pickTrack(seed) {
   const tracks = listTracks();
   if (tracks.length === 0) return null;
-  const idx = seed
-    ? hashStr(String(seed)) % tracks.length
-    : Math.floor(Math.random() * tracks.length);
+  if (!seed) return tracks[Math.floor(Math.random() * tracks.length)];
+
+  let idx = hashStr(String(seed)) % tracks.length;
+  if (tracks.length > 1) {
+    const y = new Date(`${seed}T00:00:00Z`);
+    if (!Number.isNaN(y.getTime())) {
+      y.setUTCDate(y.getUTCDate() - 1);
+      const prevIdx = hashStr(y.toISOString().slice(0, 10)) % tracks.length;
+      if (idx === prevIdx) idx = (idx + 1) % tracks.length;
+    }
+  }
   return tracks[idx];
 }
 
@@ -50,8 +59,9 @@ async function mixBGM(speechPath, seed) {
 
   console.log(`🎵 BGMを合成中... (${path.basename(bgmPath)})`);
   try {
-    // プール曲は取り込み時に loudness 正規化済みなので、ここは実績ある単純ミックス
-    // （volume=0.12 + amix duration=first）。無限ループ入力に重いフィルタを載せない。
+    // 単純ミックス（volume=0.12 + amix duration=first）。無限ループ入力に重いフィルタを載せない。
+    // ※現行プール(Pixabay)は loudness 正規化が未実施。曲間で音量差が出うるので、
+    //   ffmpeg 導入後に取り込み側で一括 loudnorm するのが望ましい（CREDITS.md 参照）。
     // -map "[mix]" で音声のみ出力（曲にアルバムアート画像が埋まっていても、
     // -stream_loop がそれを無限ループして暴走するのを防ぐ）。
     execSync(
