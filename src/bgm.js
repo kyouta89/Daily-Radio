@@ -6,7 +6,7 @@ const path = require("path");
 // プールが空でも従来曲にフォールバックするので、音源が無くても壊れない。
 const BGM_DIR = path.join(__dirname, "../assets/bgm");
 const LEGACY_BGM = path.join(__dirname, "../assets/bgm.mp3");
-const BGM_VOLUME = 0.12;
+const BGM_VOLUME = 0.09;
 
 function hashStr(str) {
   let h = 2166136261;
@@ -59,7 +59,7 @@ async function mixBGM(speechPath, seed) {
 
   console.log(`🎵 BGMを合成中... (${path.basename(bgmPath)})`);
   try {
-    // 単純ミックス（volume=0.12 + amix duration=first）。無限ループ入力に重いフィルタを載せない。
+    // 単純ミックス（volume=0.09 + amix duration=first）。無限ループ入力に重いフィルタを載せない。
     // ※現行プール(Pixabay)は loudness 正規化が未実施。曲間で音量差が出うるので、
     //   ffmpeg 導入後に取り込み側で一括 loudnorm するのが望ましい（CREDITS.md 参照）。
     // -map "[mix]" で音声のみ出力（曲にアルバムアート画像が埋まっていても、
