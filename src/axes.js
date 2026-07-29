@@ -51,12 +51,16 @@ const RSS_AXES = [
   {
     name: "プロダクト開発・サービスデザイン",
     selectionHint:
-      "プロダクト開発・サービスデザインの実践知を扱う。海外のPM論・グロース論（Lenny's、Intercom系）と、国内スタートアップ・SaaSの事例（Coral Capital、BRIDGE系）をバランス良く取り上げる。単なる資金調達ニュースは避け、実際にプロダクトを作る人にとっての学びがある記事を優先する。",
+      "プロダクト開発・サービスデザインの実践知を扱う。海外のPM論・グロース論（Lenny's系）、UX・サービスデザインの知見（NN/g、UX Collective系）、プロダクト戦略（SVPG/Marty Cagan系）、国内スタートアップ・SaaSの事例（Coral Capital系）をバランス良く取り上げる。単なる資金調達ニュースは避け、実際にプロダクトを作る人にとっての学びがある記事を優先する。",
     urls: [
       "https://www.lennysnewsletter.com/feed",
       "https://www.intercom.com/blog/feed/",
       "https://coralcap.co/feed/",
       "https://thebridge.jp/feed",
+      // 供給が Lenny's 一択に痩せていたため補強（UX/サービスデザイン/プロダクト戦略の生きたフィード）。
+      "https://www.nngroup.com/feed/rss/", // Nielsen Norman Group（UX・サービスデザイン）
+      "https://uxdesign.cc/feed", // UX Collective（デザイン、更新頻度高）
+      "https://www.svpg.com/articles/feed/", // Silicon Valley Product Group / Marty Cagan（プロダクト戦略・低頻度だが高品質）
     ],
   },
 ];
