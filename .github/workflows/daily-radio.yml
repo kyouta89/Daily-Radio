@@ -68,3 +68,6 @@ jobs:
           CF_R2_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
           CF_BUCKET_NAME: ${{ secrets.CF_BUCKET_NAME }}
           CF_PUBLIC_URL: ${{ secrets.CF_PUBLIC_URL }}
+
+          # 死活監視（Healthchecks.io）。未設定でも動作（pingしないだけ）。
+          HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}

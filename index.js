@@ -24,6 +24,27 @@ const holiday_jp = require("@holiday-jp/holiday_jp");
 
 const LOCAL_SAVE_DIR = path.join(__dirname, "output");
 
+// 死活監視（dead-man's switch）。Healthchecks.io の ping URL に best-effort で叩く。
+// 平日朝に成功pingが来ないと Healthchecks 側がアラート → ワークフロー自動停止・cron抜け・
+// クラッシュ（＝ジョブが動かずジョブから通知できないケース）を GitHub の外から検知できる。
+// HEALTHCHECK_URL 未設定なら何もしない（監視は任意・未設定でもパイプラインは壊れない）。
+// suffix="/fail" で失敗を即通知、"" で成功（正常完了・平日祝日等の意図したスキップ含む）。
+async function pingHealthcheck(suffix = "") {
+  const base = process.env.HEALTHCHECK_URL;
+  if (!base) return;
+  try {
+    await fetch(`${base}${suffix}`, {
+      method: "POST",
+      body: suffix === "/fail" ? "pipeline failed" : "ok",
+      signal: AbortSignal.timeout(10000),
+    });
+    console.log(`🫀 死活監視ping送信: ${suffix === "/fail" ? "fail" : "success"}`);
+  } catch (e) {
+    // 監視の失敗でパイプラインを壊さない（通知が飛ばないだけ）。
+    console.warn(`⚠️ 死活監視pingに失敗（無視して続行）: ${e.message}`);
+  }
+}
+
 async function main() {
   try {
     console.log("📻 Daily Radio 起動...");
@@ -116,9 +137,14 @@ async function main() {
   }
 }
 
-main().finally(() => {
-  // TTS/AWS SDK 等の keep-alive ソケットでイベントループが空かず、処理完了後も
-  // プロセスが数十分ぶら下がる問題への対処。パイプラインは逐次 await なので、
-  // ここに到達した時点で全工程は完了/中断済み。終了コードを保って明示的に落とす。
-  process.exit(process.exitCode || 0);
-});
+main()
+  // main は自身のエラーを catch して process.exitCode=1 を立てる（throwしない）ので、
+  // ここでは常に resolve する。exitCode を見て成功/失敗の ping を1回だけ送る。
+  // スキップ（平日祝日・本日分済み）は exitCode を立てないので success 扱い＝正しい。
+  .then(() => pingHealthcheck(process.exitCode ? "/fail" : ""))
+  .finally(() => {
+    // TTS/AWS SDK 等の keep-alive ソケットでイベントループが空かず、処理完了後も
+    // プロセスが数十分ぶら下がる問題への対処。パイプラインは逐次 await なので、
+    // ここに到達した時点で全工程は完了/中断済み。終了コードを保って明示的に落とす。
+    process.exit(process.exitCode || 0);
+  });
