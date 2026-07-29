@@ -49,6 +49,18 @@ function matchesKeyword(item, keyword) {
   );
 }
 
+// 過去14日に既出のURL(excludedUrls)を候補から除外する（全軸に適用するコード側dedup）。
+// プロンプトでの「避けてね」依頼だけだと選定AI(Haiku)が守り切れず同じ記事が日をまたいで
+// 再登場するため、候補リストの時点で構造的に落とす。
+// 除外して候補が0件になった軸だけ元の候補に戻す（＝全件既出のときは最良を1つ選ばせる）。
+// 戻り値: { items, fallback } — fallback=true は「全件既出だったので除外を解除した」印。
+function dedupeCandidates(items, excludedUrls) {
+  if (!excludedUrls || excludedUrls.size === 0) return { items, fallback: false };
+  const unused = items.filter((it) => !excludedUrls.has(it.link));
+  if (unused.length > 0) return { items: unused, fallback: false };
+  return { items, fallback: true };
+}
+
 async function generateScript(axesWithItems, apiKey, excludedUrls = new Set(), variant = null) {
   try {
     console.log("2. Claudeが構成・リンク抽出・執筆中...");
@@ -132,6 +144,14 @@ ${DIALOGUE_RULES}${moodBlock}${dateBlock}
           candidateItems = axis.items.filter((it) => !matchesKeyword(it, keyword));
           if (candidateItems.length === 0) candidateItems = axis.items; // 保険
         }
+      }
+
+      // 全軸で過去14日の既出URLをコード側で除外（ServiceNow軸は上で既に除外済みだが二重適用は無害）。
+      // これで「日をまたいで完全同一URLの記事」が構造的に出なくなる。
+      const dedup = dedupeCandidates(candidateItems, excludedUrls);
+      candidateItems = dedup.items;
+      if (dedup.fallback) {
+        console.log(`     ♻️ [${axis.name}] 候補が全て過去14日に既出のため、除外を解除して最良を選定`);
       }
 
       const editorPrompt = `あなたはプロのテックメディアの編集長です。
@@ -248,4 +268,4 @@ ${fullScript.substring(0, 2500)}`;
   }
 }
 
-module.exports = { generateScript };
+module.exports = { generateScript, dedupeCandidates };
