@@ -193,7 +193,10 @@ ${renderItemList(candidateItems)}`;
     for (let i = 0; i < selectedNews.length; i++) {
       const news = selectedNews[i];
       console.log(`     - 執筆中 (${i + 1}/${selectedNews.length}): [${news.axis}] ${news.title}`);
-      linksRaw += `${news.title}|${news.url}\n`;
+      // 区切りはタブ。記事タイトルには "|" が入り得る（東洋経済「… | ライフ | 東洋経済
+      // オンライン」、Lenny's「… | 著者名」等）ため、"|" 区切りだと notion.js 側で URL を
+      // 取り違えてリンクが落ち、dedup の照合キーが失われて同じ記事が毎日再選出されていた。
+      linksRaw += `${news.title}\t${news.url}\n`;
 
       const bodyBlock = news.snippet
         ? `\n記事の要約(参考): ${news.snippet}`
