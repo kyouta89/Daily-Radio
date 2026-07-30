@@ -34,6 +34,25 @@ async function findTodayPage(apiKey, dbId) {
   }
 }
 
+// linksRaw（"タイトル\tURL" を改行区切りで並べた文字列）を {title, url}[] に分解する純粋関数。
+// 区切りは最初のタブ1個のみ。記事タイトルには "|" が入り得る（東洋経済「… | ライフ |
+// 東洋経済オンライン」、Lenny's「… | 著者名」等）ため、旧来の "|" 区切りだと URL を
+// 取り違えて無効化→リンクが保存されず、dedup の照合キー(URL)が失われて同じ記事が毎日
+// 再選出される不具合があった。タブはタイトル/URLに現れないので安全。
+function parseLinkLines(linksRaw) {
+  return (linksRaw || "")
+    .split("\n")
+    .map((line) => {
+      const tab = line.indexOf("\t");
+      if (tab === -1) return null;
+      const title = line.slice(0, tab).trim();
+      const url = line.slice(tab + 1).trim();
+      if (!title || !url) return null;
+      return { title, url };
+    })
+    .filter(Boolean);
+}
+
 async function saveToNotion(data, apiKey, dbId) {
   try {
     console.log("4. Notionに保存中...");
@@ -54,15 +73,9 @@ async function saveToNotion(data, apiKey, dbId) {
       }
     }
 
-    // リンクブロックの作成
-    const linkLines = data.linksRaw
-      .split("\n")
-      .filter((line) => line.includes("|"));
-    const linkBlocks = linkLines
-      .map((line) => {
-        const [title, url] = line.split("|").map((s) => s.trim());
-        if (!title || !url) return null;
-
+    // リンクブロックの作成（区切りはタブ。理由は parseLinkLines のコメント参照）
+    const linkBlocks = parseLinkLines(data.linksRaw)
+      .map(({ title, url }) => {
         // ★修正: URLが無効な場合はリンクを外してテキストのみにする
         if (!isValidUrl(url)) {
           return {
@@ -238,4 +251,4 @@ async function fetchRecentArticleURLs(apiKey, dbId, days = 14) {
   }
 }
 
-module.exports = { saveToNotion, fetchRecentArticleURLs, findTodayPage };
+module.exports = { saveToNotion, fetchRecentArticleURLs, findTodayPage, parseLinkLines };
