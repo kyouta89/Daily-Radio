@@ -1,0 +1,33 @@
+# 使い捨てワークフロー：ライブの podcast.xml に Apple 必須の <itunes:category> 等を後追い注入。
+# rss_generator.js の恒久修正が入る前に配信済みの1本を直すための一回きり。実行後に削除する。
+name: Patch Live Feed (itunes:category, one-off)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Patch live feed
+        run: node scripts/patch-live-feed.js
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_R2_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          CF_R2_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          CF_BUCKET_NAME: ${{ secrets.CF_BUCKET_NAME }}
+          CF_PUBLIC_URL: ${{ secrets.CF_PUBLIC_URL }}
+          R2_SECRET_PREFIX: ${{ secrets.R2_SECRET_PREFIX }}
