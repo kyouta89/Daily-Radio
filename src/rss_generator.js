@@ -36,6 +36,8 @@ function generateRSS(filename, audioUrl, audioSizeBytes, durationSec, existingXM
     <language>ja</language>
     <itunes:author>Daily Radio</itunes:author>
     <itunes:explicit>false</itunes:explicit>
+    <itunes:type>episodic</itunes:type>
+    <itunes:category text="Technology"/>
     <itunes:image href="${publicUrl}/thumbnail.png"/>
     <item>
       <title>${dateStr} ニュース</title>
