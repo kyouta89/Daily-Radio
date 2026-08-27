@@ -1,0 +1,39 @@
+# 使い捨てワークフロー：R2配信物を秘密プレフィックス配下へ引っ越す一回きりの移行。
+# 実行後は削除する（恒久的な仕組みではない）。手動(workflow_dispatch)専用。
+name: Migrate R2 to Secret Prefix (one-off)
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "yes で旧ルートの mp3/podcast.xml を削除まで実施（空ならプレビューのみ）"
+        type: string
+        default: ""
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migration
+        run: node scripts/migrate-r2-prefix.js
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_R2_ACCESS_KEY_ID: ${{ secrets.CF_R2_ACCESS_KEY_ID }}
+          CF_R2_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
+          CF_BUCKET_NAME: ${{ secrets.CF_BUCKET_NAME }}
+          CF_PUBLIC_URL: ${{ secrets.CF_PUBLIC_URL }}
+          R2_SECRET_PREFIX: ${{ secrets.R2_SECRET_PREFIX }}
