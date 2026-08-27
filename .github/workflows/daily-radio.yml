@@ -68,6 +68,9 @@ jobs:
           CF_R2_SECRET_ACCESS_KEY: ${{ secrets.CF_R2_SECRET_ACCESS_KEY }}
           CF_BUCKET_NAME: ${{ secrets.CF_BUCKET_NAME }}
           CF_PUBLIC_URL: ${{ secrets.CF_PUBLIC_URL }}
+          # 秘匿配信用プレフィックス（設定時のみ全オブジェクトを <prefix>/ 配下へ）。
+          # 未設定なら従来どおりルート直下。旧URLを知る第三者を締め出す用途。
+          R2_SECRET_PREFIX: ${{ secrets.R2_SECRET_PREFIX }}
 
           # 死活監視（Healthchecks.io）。未設定でも動作（pingしないだけ）。
           HEALTHCHECK_URL: ${{ secrets.HEALTHCHECK_URL }}
