@@ -1,4 +1,5 @@
 const { Client } = require("@notionhq/client");
+const { t } = require("./i18n");
 
 function getTodayDateStr() {
   const now = new Date();
@@ -146,7 +147,11 @@ async function saveToNotion(data, apiKey, dbId) {
               rich_text: [
                 {
                   text: {
-                    content: `🎭 本日のムード: ${data.moodLabel}（声: ${data.voiceA} / ${data.voiceB}）`,
+                    content: t.moodCallout({
+                      label: data.moodLabel,
+                      voiceA: data.voiceA,
+                      voiceB: data.voiceB,
+                    }),
                   },
                 },
               ],
@@ -171,7 +176,7 @@ async function saveToNotion(data, apiKey, dbId) {
           object: "block",
           type: "callout",
           callout: {
-            rich_text: [{ text: { content: "💡 Key Takeaway" } }],
+            rich_text: [{ text: { content: t.notionKeyTakeaway } }],
             color: "gray_background",
             icon: { emoji: "💡" },
           },
@@ -185,7 +190,7 @@ async function saveToNotion(data, apiKey, dbId) {
           object: "block",
           type: "heading_2",
           heading_2: {
-            rich_text: [{ text: { content: "🔗 紹介した記事リスト" } }],
+            rich_text: [{ text: { content: t.notionHeadingLinks } }],
           },
         },
         ...linkBlocks,
@@ -197,7 +202,7 @@ async function saveToNotion(data, apiKey, dbId) {
         {
           object: "block",
           type: "heading_2",
-          heading_2: { rich_text: [{ text: { content: "📻 ラジオ原稿" } }] },
+          heading_2: { rich_text: [{ text: { content: t.notionHeadingScript } }] },
         },
         ...scriptBlocks,
       ],

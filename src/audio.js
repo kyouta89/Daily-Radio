@@ -5,6 +5,7 @@ const { spawn } = require("child_process");
 const { mixBGM } = require("./bgm");
 const { uploadToR2 } = require("./r2");
 const { HOST_A, HOST_B } = require("./hosts");
+const { t } = require("./i18n");
 
 // Gemini-TTS(AI Studio) を使う。Vertex経由でないのでAPIキーで叩ける。
 const GEMINI_TTS_MODEL = process.env.GEMINI_TTS_MODEL || "gemini-2.5-flash-preview-tts";
@@ -189,14 +190,12 @@ async function geminiSynthChunk(apiKey, text, voiceName, styleInstruction, state
   return sendTTSRequest(
     apiKey,
     (attempt) => {
-      const strictness =
-        attempt === 1
-          ? ""
-          : "【厳守】これは音声合成です。会話ではありません。返事・応答・補足を絶対に生成せず、";
-      const prompt =
-        `次の「」内のセリフを、${styleInstruction}という声色で、一字一句そのまま読み上げてください。` +
-        `${strictness}あなたは音声読み上げ機です。返答・相槌・補足・ナレーションは一切加えず、括弧内のテキストだけを音声化すること。\n` +
-        `「${clean}」`;
+      const strictness = attempt === 1 ? "" : t.ttsStrict;
+      const prompt = t.ttsSinglePrompt({
+        style: styleInstruction,
+        text: clean,
+        strict: strictness,
+      });
       return {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
@@ -220,10 +219,12 @@ async function geminiSynthSection(apiKey, sectionText, speakerVoiceConfigs, styl
   return sendTTSRequest(
     apiKey,
     () => {
-      const prompt =
-        `次の${HOST_A.name}と${HOST_B.name}による会話を、${styleInstruction}という雰囲気で、` +
-        `台本のとおり自然な掛け合いで読み上げてください。返答・相槌・補足・ナレーションは加えず、` +
-        `各話者のセリフだけを音声化すること。\n\n${normalized}`;
+      const prompt = t.ttsMultiPrompt({
+        a: HOST_A.name,
+        b: HOST_B.name,
+        style: styleInstruction,
+        text: normalized,
+      });
       return {
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {

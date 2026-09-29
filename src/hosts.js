@@ -1,20 +1,11 @@
 // 2人パーソナリティの定義。台本生成(script.js)と音声合成(audio.js)で共有する。
-// voice は OpenAI TTS のボイス名。nova(明るい女性)/ onyx(落ち着いた男性)は安定して使える組み合わせ。
-// 好みで coral / ash / sage / shimmer などに差し替え可。
-const HOST_A = {
-  name: "ミナ",
-  voice: "nova",
-  persona:
-    "明るくテンポの良いメインMC。専門的な内容をかみ砕いて、エンジニアや経営者の視点で要点を解説する。",
-  ttsInstructions: "明るくエネルギッシュな女性ラジオDJ。テンポよく、親しみやすく。",
-};
+// 実体は src/config.js の HOSTS にあります（番組ごとに編集するのはそちら）。
+// ここは既存コードとの互換のために HOST_A / HOST_B という名前で再エクスポートするだけ。
+// name は「台本の話者ラベル」と「音声の声の割り当て」を結ぶ契約なので、
+// 変更すると script.js のプロンプトと audio.js の話者ラベル正規表現の両方が自動追従する。
+const { HOSTS } = require("./config");
 
-const HOST_B = {
-  name: "リク",
-  voice: "onyx",
-  persona:
-    "素朴な聞き手役の相棒。難しい用語が出たら『それってどういうこと?』とリスナー目線で質問し、話を引き出す。時々ユーモアを挟む。",
-  ttsInstructions: "落ち着いた男性の相棒パーソナリティ。自然な相槌と素朴な好奇心を込めて。",
-};
+const HOST_A = HOSTS.A;
+const HOST_B = HOSTS.B;
 
 module.exports = { HOST_A, HOST_B };
