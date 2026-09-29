@@ -12,6 +12,7 @@ const {
   saveToNotion,
   fetchRecentArticleURLs,
   findTodayPage,
+  parseLinkLines,
 } = require("./src/notion");
 const { generateAudio } = require("./src/audio");
 const { downloadExistingRSS, uploadRSSToR2 } = require("./src/r2");
@@ -119,7 +120,19 @@ async function main() {
     );
 
     const existingXML = await downloadExistingRSS();
-    const rssContent = generateRSS(fileName, audioUrl, sizeBytes, durationSec || 0, existingXML);
+    // エピソードの説明欄に出すサマリー（要点＋紹介記事リスト）。
+    // 同じ takeaway は Notion ページにも保存されるので、両方で読める。
+    const rssContent = generateRSS(
+      fileName,
+      audioUrl,
+      sizeBytes,
+      durationSec || 0,
+      existingXML,
+      {
+        takeaway: generatedData.takeaway,
+        links: parseLinkLines(generatedData.linksRaw),
+      },
+    );
     await uploadRSSToR2(rssContent);
 
     await saveToNotion(
