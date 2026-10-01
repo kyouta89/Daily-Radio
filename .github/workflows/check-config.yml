@@ -1,0 +1,51 @@
+# 設定チェック：src/config.js などを編集して Commit するたびに走る。
+# ねらいは「ブラウザだけで編集する人が、翌朝の配信失敗ではなく30秒後に間違いに気づけること」。
+# APIキーは一切使わず、課金も発生しない。
+name: 設定チェック
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: コードを取得
+        uses: actions/checkout@v4
+
+      - name: Node.js を用意
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      # 依存パッケージを入れる前に、まず構文と設定だけを見る（ここが一番よく落ちるので最速で返す）
+      - name: 構文チェック（カンマやクォートの消し忘れ）
+        run: |
+          node --check index.js
+          for f in src/*.js test/*.js scripts/*.js dry-run.js; do
+            [ -e "$f" ] || continue
+            node --check "$f"
+          done
+
+      - name: 設定チェック（日本語）
+        run: node scripts/validate-config.js
+        env:
+          SHOW_LANG: ja
+
+      - name: 設定チェック（英語）
+        run: node scripts/validate-config.js
+        env:
+          SHOW_LANG: en
+
+      - name: 依存パッケージをインストール
+        run: npm ci
+
+      - name: 回帰テスト
+        run: |
+          node test/split-sections.js
+          node test/dedupe-candidates.js
+          node test/parse-link-lines.js
