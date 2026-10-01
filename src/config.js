@@ -34,7 +34,7 @@ const LOCATION = {
 // A は女性声プール、B は男性声プールから日替わりで選ばれます（src/variant.js）。
 const HOSTS = {
   A: {
-    name: "ミナ",
+    name: "ユイ",
     persona:
       "明るくテンポの良いメインMC。専門的な内容をかみ砕いて、エンジニアや経営者の視点で要点を解説する。",
     ttsInstructions: "明るくエネルギッシュな女性ラジオDJ。テンポよく、親しみやすく。",
