@@ -8,16 +8,28 @@ const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
 const { splitIntoSections, buildSections } = require("../src/audio");
+const { HOST_A, HOST_B } = require("../src/hosts");
 
-const script = fs.readFileSync(
-  path.join(__dirname, "fixtures", "sample-script.txt"),
-  "utf8"
+// 話者名は src/config.js で変更できる（番組ごとに違う）。splitIntoSections は
+// 設定値から正規表現を作るので、固定サンプルの "ミナ/リク" のままだと改名した
+// 瞬間にこのテストが落ちる＝正当なカスタマイズでCIが赤くなってしまう。
+// そこでサンプルの話者名を「いまの設定値」に置き換えてから流し、名前に依存しない
+// テストにする。いったん番兵に退避するのは、置換後の名前が別の名前を含む場合に
+// 二重置換が起きるのを防ぐため。
+const A = HOST_A.name;
+const B = HOST_B.name;
+const applyHostNames = (text) =>
+  text
+    .split("ミナ").join("\u0000A\u0000")
+    .split("リク").join("\u0000B\u0000")
+    .split("\u0000A\u0000").join(A)
+    .split("\u0000B\u0000").join(B);
+
+const script = applyHostNames(
+  fs.readFileSync(path.join(__dirname, "fixtures", "sample-script.txt"), "utf8")
 );
 
-const HOST_A = "ミナ";
-const HOST_B = "リク";
-const isUtterance = (l) =>
-  new RegExp(`^\\s*(${HOST_A}|${HOST_B})\\s*[:：]`).test(l);
+const isUtterance = (l) => new RegExp(`^\\s*(${A}|${B})\\s*[:：]`).test(l);
 const utterCount = script.split("\n").filter(isUtterance).length;
 
 const sections = splitIntoSections(script); // 既定 maxChars=2500
@@ -55,10 +67,10 @@ assert.strictEqual(
 // scriptSections（コーナー配列）を渡したら、各ブロックが独立したセクションになり、
 // 継ぎ目がブロック境界＝コーナーの転換点だけに来ること（＝声ドリフトを転換点に寄せる狙い）。
 const cornerBlocks = [
-  "ミナ: おはようございます。\nリク: 今日もよろしく。", // オープニング
-  "ミナ: 続いてはテックのコーナー。\nリク: お願いします。", // コーナー1
-  "ミナ: 続いてはビジネス。\nリク: なるほど。", // コーナー2
-  "ミナ: 以上でした。\nリク: また明日。", // エンディング
+  `${A}: おはようございます。\n${B}: 今日もよろしく。`, // オープニング
+  `${A}: 続いてはテックのコーナー。\n${B}: お願いします。`, // コーナー1
+  `${A}: 続いてはビジネス。\n${B}: なるほど。`, // コーナー2
+  `${A}: 以上でした。\n${B}: また明日。`, // エンディング
 ];
 const built = buildSections("", cornerBlocks);
 assert.strictEqual(
@@ -70,7 +82,7 @@ assert.strictEqual(
 const bigLines = [];
 for (let i = 0; i < 80; i++) {
   bigLines.push(
-    (i % 2 ? "リク: " : "ミナ: ") +
+    (i % 2 ? `${B}: ` : `${A}: `) +
       "これはテスト用の少し長めの発話サンプルで、文字数を稼ぐためのダミーテキストです。"
   );
 }
